@@ -1,0 +1,2 @@
+../ST7735/test.c:3:6:MPU_Config	24	static
+../ST7735/test.c:42:7:CPU_CACHE_Enable	24	static,ignoring_inline_asm
