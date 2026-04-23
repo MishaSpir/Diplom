@@ -23,6 +23,7 @@
 #include "rtc.h"
 #include "spi.h"
 #include "tim.h"
+#include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -48,7 +49,10 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint16_t adc_value;
+volatile uint16_t adc_value;
+uint64_t last_time = 0;
+uint8_t msg[64];
+volatile uint32_t system_ticks = 0;  // Глобальный �?четчик тиков
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -85,6 +89,20 @@ static void RTC_CalendarShow(RTC_DateTypeDef *sdatestructureget,RTC_TimeTypeDef 
   HAL_RTC_GetDate(&hrtc, sdatestructureget, RTC_FORMAT_BIN);
 }
 
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+        if(htim->Instance == TIM6) //check if the interrupt comes from TIM6
+        {
+    		HAL_ADC_Start(&hadc1);
+    		HAL_ADC_PollForConversion(&hadc1, 1000);
+    		adc_value = HAL_ADC_GetValue(&hadc1);
+    		HAL_ADC_Stop(&hadc1);
+
+        	HAL_UART_Transmit(&huart1, msg, sprintf((char*)msg,"%d",adc_value),0xFFFF);
+        	HAL_UART_Transmit(&huart1, "\n", 1,0xFFFF);
+
+        }
+}
 /* USER CODE END 0 */
 
 /**
@@ -128,12 +146,19 @@ int main(void)
   MX_TIM1_Init();
   MX_RTC_Init();
   MX_ADC1_Init();
+  MX_USART1_UART_Init();
+  MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_Base_Start_IT(&htim6);
+  __HAL_TIM_SET_PRESCALER(&htim6,649-1);
+  __HAL_TIM_SET_AUTORELOAD(&htim6,10-1);
 //	HAL_TIMEx_PWMN_Start(&htim1,TIM_CHANNEL_2);
 //	__HAL_TIM_SetCompare(&htim1,TIM_CHANNEL_2,10);
 	LCD_Test();
 	HAL_ADCEx_Calibration_Start(&hadc1, ADC_CALIB_OFFSET_LINEARITY  , ADC_SINGLE_ENDED);
-	//Стандартная калибровка для одиночных входов
+	//Стандартна�?? калибровка дл�?? одиночных входов
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -170,19 +195,35 @@ int main(void)
 
 //		LED_Blink(3,1000);
 
-		HAL_ADC_Start(&hadc1);
-		HAL_ADC_PollForConversion(&hadc1, 1000);
-		adc_value = HAL_ADC_GetValue(&hadc1);
-		HAL_ADC_Stop(&hadc1);
+//		HAL_ADC_Start(&hadc1);
+//		HAL_ADC_PollForConversion(&hadc1, 1000);
+//		adc_value = HAL_ADC_GetValue(&hadc1);
+//		HAL_ADC_Stop(&hadc1);
 
-		adc_value = (adc_value*160)/65535;
+		if(HAL_GetTick() - last_time >= 1){
+			last_time = HAL_GetTick();
+//			HAL_UART_Transmit(&huart1, msg, sprintf((char*)msg,"Test"),0xFFFF);
+
+		}
+
+		adc_value = (adc_value*160)/4096;
+//					HAL_GPIO_WritePin(GPIOE,GPIO_PIN_3,1);
+
+		if(adc_value>=80){
+			HAL_GPIO_WritePin(GPIOE,GPIO_PIN_3,1);
+		}else{
+			HAL_GPIO_WritePin(GPIOE,GPIO_PIN_3,0);
+
+		}
+
+
 		sprintf((char *)&text,"%u ",adc_value);
 		LCD_ShowString(0, 22, 160, 16, 16,text);
 //		ST7735_LCD_Driver.FillRect(&st7735_pObj, 0, 12, adc_value, 3, 0xFFFF);
 
-		uint16_t buffer[10][160];  // 2 строки по 160 пикселей
+		uint16_t buffer[10][160];  // 2 �?троки по 160 пик�?елей
 
-		// Заполняем буфер
+		// Заполн�?ем буфер
 		for (uint16_t col = 0; col < 160; col++) {
 		    uint16_t color = (col < adc_value) ? WHITE : BLACK;
 		    for(uint16_t row = 0; row < 10; row++){
@@ -190,7 +231,7 @@ int main(void)
 		    }
 		}
 
-		// Выводим (высота = 2, ширина = 160)
+		// Выводим (вы�?ота = 2, ширина = 160)
 		ST7735_FillRGBRect(&st7735_pObj, 0, 12, (uint8_t*)buffer, 160, 10);
 
 
@@ -224,7 +265,16 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.LSIState = RCC_LSI_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 2;
+  RCC_OscInitStruct.PLL.PLLN = 52;
+  RCC_OscInitStruct.PLL.PLLP = 10;
+  RCC_OscInitStruct.PLL.PLLQ = 2;
+  RCC_OscInitStruct.PLL.PLLR = 5;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_3;
+  RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
+  RCC_OscInitStruct.PLL.PLLFRACN = 0;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -235,15 +285,15 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
                               |RCC_CLOCKTYPE_D3PCLK1|RCC_CLOCKTYPE_D1PCLK1;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV2;
   RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
     Error_Handler();
   }

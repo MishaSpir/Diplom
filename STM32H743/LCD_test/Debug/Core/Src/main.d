@@ -36,8 +36,10 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_spi_ex.h \
  ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_tim.h \
  ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_tim_ex.h \
+ ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h \
+ ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart_ex.h \
  ../Core/Inc/adc.h ../Core/Inc/main.h ../Core/Inc/rtc.h ../Core/Inc/spi.h \
- ../Core/Inc/tim.h ../Core/Inc/gpio.h \
+ ../Core/Inc/tim.h ../Core/Inc/usart.h ../Core/Inc/gpio.h \
  D:/RADIK/Diplom/STM32H743/LCD_test/ST7735/lcd.h \
  D:/RADIK/Diplom/STM32H743/LCD_test/ST7735/st7735.h \
  D:/RADIK/Diplom/STM32H743/LCD_test/ST7735/st7735_reg.h \
@@ -80,11 +82,14 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_spi_ex.h:
 ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_tim.h:
 ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_tim_ex.h:
+../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h:
+../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart_ex.h:
 ../Core/Inc/adc.h:
 ../Core/Inc/main.h:
 ../Core/Inc/rtc.h:
 ../Core/Inc/spi.h:
 ../Core/Inc/tim.h:
+../Core/Inc/usart.h:
 ../Core/Inc/gpio.h:
 D:/RADIK/Diplom/STM32H743/LCD_test/ST7735/lcd.h:
 D:/RADIK/Diplom/STM32H743/LCD_test/ST7735/st7735.h:
