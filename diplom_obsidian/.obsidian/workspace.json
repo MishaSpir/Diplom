@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "HAL.md",
+                "file": "Диплом_радар_LINUX/Что делал.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "HAL"
+              "title": "Что делал"
             }
           }
         ]
@@ -185,14 +185,16 @@
   },
   "active": "856496d5e010d35a",
   "lastOpenFiles": [
-    "Диплом_радар_LINUX/Что делал.md",
-    "Диплом_радар_LINUX/Теория.md",
+    "Pasted image 20260425183424.png",
     "HAL.md",
     "Инфа.md",
-    "Pasted image 20260423104238.png",
-    "Pasted image 20260423104224.png",
-    "Шпаргалка по функциям HAL.md",
+    "UART на linux Mint 21.md",
     "ОБЩАЯ ТЕОРИЯ.md",
+    "Images/Pasted image 20260423104238.png",
+    "Images/Pasted image 20260423104224.png",
+    "Диплом_радар_LINUX/Что делал.md",
+    "Диплом_радар_LINUX/Теория.md",
+    "Шпаргалка по функциям HAL.md",
     "Hot keys.md",
     "Диплом_радар_LINUX/радар IVS-565.md",
     "Диплом_радар_LINUX/Плата развития WEACT.md",
