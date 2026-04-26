@@ -53,6 +53,7 @@ volatile uint16_t adc_value;
 uint64_t last_time = 0;
 uint8_t msg[64];
 volatile uint32_t system_ticks = 0;  // Глобальный �?четчик тиков
+uint8_t adc_ready =0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -93,13 +94,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
         if(htim->Instance == TIM6) //check if the interrupt comes from TIM6
         {
-    		HAL_ADC_Start(&hadc1);
-    		HAL_ADC_PollForConversion(&hadc1, 1000);
-    		adc_value = HAL_ADC_GetValue(&hadc1);
-    		HAL_ADC_Stop(&hadc1);
 
-        	HAL_UART_Transmit(&huart1, msg, sprintf((char*)msg,"%d",adc_value),0xFFFF);
-        	HAL_UART_Transmit(&huart1, "\n", 1,0xFFFF);
+//        	HAL_UART_Transmit(&huart1, msg, sprintf((char*)msg,"%d",adc_value),100);
+//        	HAL_UART_Transmit(&huart1, "\n", 1,100);
+
+
 
         }
 }
@@ -113,9 +112,7 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 
-  #ifdef W25Qxx
-    SCB->VTOR = QSPI_BASE;
-  #endif
+
   MPU_Config();
   CPU_CACHE_Enable();
 
@@ -172,21 +169,21 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-		RTC_CalendarShow(&sdatestructureget,&stimestructureget);
-//		ST7735_LCD_Driver.FillRect(&st7735_pObj, 0, 12, (50*ST7735Ctx.Width)/ 100, 3, BLACK);
-
-
-		if (stimestructureget.Seconds % 2 == 1)
-			sprintf((char *)&text,"Time: %02d:%02d", stimestructureget.Hours, stimestructureget.Minutes);
-		else
-			sprintf((char *)&text,"Time: %02d %02d", stimestructureget.Hours, stimestructureget.Minutes);
-		LCD_ShowString(4, 58, 160, 16, 16, text);
-
-		ST7735_LCD_Driver.SetPixel(&st7735_pObj,100,10,GREEN);
-
-
-
-		ST7735_LCD_Driver.FillRect(&st7735_pObj, 0, ST7735Ctx.Height - 3, (50*ST7735Ctx.Width)/ 100, 3, 0xFFFF);
+//		RTC_CalendarShow(&sdatestructureget,&stimestructureget);
+////		ST7735_LCD_Driver.FillRect(&st7735_pObj, 0, 12, (50*ST7735Ctx.Width)/ 100, 3, BLACK);
+//
+//
+//		if (stimestructureget.Seconds % 2 == 1)
+//			sprintf((char *)&text,"Time: %02d:%02d", stimestructureget.Hours, stimestructureget.Minutes);
+//		else
+//			sprintf((char *)&text,"Time: %02d %02d", stimestructureget.Hours, stimestructureget.Minutes);
+//		LCD_ShowString(4, 58, 160, 16, 16, text);
+//
+//		ST7735_LCD_Driver.SetPixel(&st7735_pObj,100,10,GREEN);
+//
+//
+//
+//		ST7735_LCD_Driver.FillRect(&st7735_pObj, 0, ST7735Ctx.Height - 3, (50*ST7735Ctx.Width)/ 100, 3, 0xFFFF);
 
 //	  	sprintf((char *)&text,"HELL WORLD!!!");
 //	  	LCD_ShowString(0, 0, 160, 16, 16,text);
@@ -200,40 +197,54 @@ int main(void)
 //		adc_value = HAL_ADC_GetValue(&hadc1);
 //		HAL_ADC_Stop(&hadc1);
 
+
+
 		if(HAL_GetTick() - last_time >= 1){
 			last_time = HAL_GetTick();
 //			HAL_UART_Transmit(&huart1, msg, sprintf((char*)msg,"Test"),0xFFFF);
+			HAL_ADC_Start(&hadc1);
+			HAL_ADC_PollForConversion(&hadc1, 1);
+			adc_value = HAL_ADC_GetValue(&hadc1);
+			HAL_ADC_Stop(&hadc1);
+			adc_ready = 1;
+			HAL_UART_Transmit(&huart1, msg, sprintf((char*)msg,"%d",adc_value),100);
+			HAL_UART_Transmit(&huart1, "\n", 1,100);
 
 		}
 
-		adc_value = (adc_value*160)/4096;
-//					HAL_GPIO_WritePin(GPIOE,GPIO_PIN_3,1);
+		if (adc_ready){
+			adc_ready = 0;
 
-		if(adc_value>=80){
-			HAL_GPIO_WritePin(GPIOE,GPIO_PIN_3,1);
-		}else{
-			HAL_GPIO_WritePin(GPIOE,GPIO_PIN_3,0);
 
+
+//		adc_value = (adc_value*160)/4096;
+////					HAL_GPIO_WritePin(GPIOE,GPIO_PIN_3,1);
+//
+//		if(adc_value>=80){
+//			HAL_GPIO_WritePin(GPIOE,GPIO_PIN_3,1);
+//		}else{
+//			HAL_GPIO_WritePin(GPIOE,GPIO_PIN_3,0);
+//
+//		}
+//
+//
+//		sprintf((char *)&text,"%u ",adc_value);
+//		LCD_ShowString(0, 22, 160, 16, 16,text);
+////		ST7735_LCD_Driver.FillRect(&st7735_pObj, 0, 12, adc_value, 3, 0xFFFF);
+//
+//		uint16_t buffer[10][160];  // 2 �?троки по 160 пик�?елей
+//
+//		// Заполн�?ем буфер
+//		for (uint16_t col = 0; col < 160; col++) {
+//		    uint16_t color = (col < adc_value) ? WHITE : BLACK;
+//		    for(uint16_t row = 0; row < 10; row++){
+//		    buffer[row][col] = color;
+//		    }
+//		}
+//
+//		// Выводим (вы�?ота = 2, ширина = 160)
+//		ST7735_FillRGBRect(&st7735_pObj, 0, 12, (uint8_t*)buffer, 160, 10);
 		}
-
-
-		sprintf((char *)&text,"%u ",adc_value);
-		LCD_ShowString(0, 22, 160, 16, 16,text);
-//		ST7735_LCD_Driver.FillRect(&st7735_pObj, 0, 12, adc_value, 3, 0xFFFF);
-
-		uint16_t buffer[10][160];  // 2 �?троки по 160 пик�?елей
-
-		// Заполн�?ем буфер
-		for (uint16_t col = 0; col < 160; col++) {
-		    uint16_t color = (col < adc_value) ? WHITE : BLACK;
-		    for(uint16_t row = 0; row < 10; row++){
-		    buffer[row][col] = color;
-		    }
-		}
-
-		// Выводим (вы�?ота = 2, ширина = 160)
-		ST7735_FillRGBRect(&st7735_pObj, 0, 12, (uint8_t*)buffer, 160, 10);
-
 
 
   }
