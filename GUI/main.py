@@ -7,8 +7,9 @@ from pyqtgraph import PlotWidget
 import pyqtgraph as pg
 
 update_counter = 0
-GRAPH_UPDATE_INTERVAL = 100  # Обновлять график каждые 10 значений
+GRAPH_UPDATE_INTERVAL = 100  # Обновлять график каждые 100 значений
 buffer = ""  # Глобальный буфер для неполных строк
+flag  = True  
 
 listX = []
 for x in range(100):
@@ -17,11 +18,20 @@ listY = []
 for y in range(100):
     listY.append(0)    
 
+listX2 = []
+for x2 in range(100):
+    listX2.append(x2)
+listY2 = []
+for y2 in range(100):
+    listY2.append(y2)
+       
+
 if __name__ == '__main__':
     # Объект приложения
     app = QApplication(sys.argv)
     # интерфейс 
-    ui = uic.loadUi("design.ui")
+    # ui = uic.loadUi("design.ui")
+    ui = uic.loadUi("design_2_graph.ui")
     ui.setWindowTitle("Serial GUI")
     
     # Объект порта
@@ -54,10 +64,17 @@ if __name__ == '__main__':
         serial.close()
         print("OnClose",ui.ComList.currentText())   
 
+
+    def RefreshGraph2():
+        global flag
+        # flag = True
+        print("refresh")
+        flag = True          
+    
     def OnRead():
         global buffer
-        global update_counter 
-    
+        global update_counter
+
         while serial.bytesAvailable():
             # Читаем ВСЕ доступные данные как байты
             data = serial.readAll()
@@ -81,8 +98,8 @@ if __name__ == '__main__':
                         ui.adcLbl.setText(str(value))
                         print(value)  # Теперь будет правильно!
 
-                        # Обновляем график (как вы уже сделали)
-                        global update_counter, listY
+                        # Обновляем график 
+                        global update_counter, listY, listY2,flag
                         listY.append(value)
                         listY.pop(0)
                         update_counter += 1
@@ -93,6 +110,11 @@ if __name__ == '__main__':
                             # print(listY)
                             ui.graph.clear()
                             ui.graph.plot(listX,listY,pen=pen)
+                            if flag:
+                                listY2 = listY
+                                ui.graph2.clear()
+                                ui.graph2.plot(listX,listY2,pen=pen)
+                                flag = False
                         
                     except ValueError:
                      print(f"Ошибка преобразования: {line}")
@@ -135,6 +157,7 @@ if __name__ == '__main__':
     ui.ComList.currentIndexChanged.connect(test)
     ui.openBtn.clicked.connect(OnOpen)
     ui.closeBtn.clicked.connect(OnClose)
+    ui.rfrshBtn.clicked.connect(RefreshGraph2)
 
     # plot_graph = pg.PlotWidget()
     # ui.graph.setCentralWidget(plot_graph)
@@ -143,6 +166,13 @@ if __name__ == '__main__':
     pen = pg.mkPen(color=(0, 0, 255), width=2, style=QtCore.Qt.DashLine)
     ui.graph.showGrid(x=True, y=True)
     ui.graph.plot(listX,listY,pen=pen)
+
+    #Для второго графика 
+    ui.graph2.setBackground("w")
+    # pen = pg.mkPen(color=(255, 0, 0))
+    pen2 = pg.mkPen(color=(0, 0, 255), width=2, style=QtCore.Qt.DashLine)
+    ui.graph2.showGrid(x=True, y=True)
+    ui.graph2.plot(listX2,listY2,pen=pen)
 
 
 
