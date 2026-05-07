@@ -66,10 +66,28 @@ if __name__ == '__main__':
 
 
     def RefreshGraph2():
-        global flag
+        global flag,listY2,listY
+        listY2 = listY
+        aaf = []
+        for i in range(100):
+            aaf.append(0) 
         # flag = True
-        print("refresh")
-        flag = True          
+        flag = True
+        
+        N = len(listY2)  
+        NUM_READ = 3
+        aaf = [0] * N  
+
+        for i in range(NUM_READ, N):  # от NUM_READ до N-1
+            for j in range(NUM_READ):  # от 0 до 49
+                aaf[i] = aaf[i] + listY2[i - j]
+            aaf[i] = aaf[i] / NUM_READ              
+
+        
+        ui.graph2.clear()
+        ui.graph2.plot(listX[50:99],listY2[50:99],pen=pen2)      
+        ui.graph2.plot(listX[50:99],aaf[50:99],pen=pen)
+
     
     def OnRead():
         global buffer
@@ -111,10 +129,11 @@ if __name__ == '__main__':
                             ui.graph.clear()
                             ui.graph.plot(listX,listY,pen=pen)
                             if flag:
-                                listY2 = listY
-                                ui.graph2.clear()
-                                ui.graph2.plot(listX,listY2,pen=pen)
                                 flag = False
+                                
+                                
+
+                                
                         
                     except ValueError:
                      print(f"Ошибка преобразования: {line}")
@@ -164,13 +183,12 @@ if __name__ == '__main__':
     ui.graph.setBackground("w")
     # pen = pg.mkPen(color=(255, 0, 0))
     pen = pg.mkPen(color=(0, 0, 255), width=2, style=QtCore.Qt.DashLine)
+    pen2 = pg.mkPen(color=(255, 0, 0), width=1, style=QtCore.Qt.DashLine)
     ui.graph.showGrid(x=True, y=True)
     ui.graph.plot(listX,listY,pen=pen)
 
     #Для второго графика 
     ui.graph2.setBackground("w")
-    # pen = pg.mkPen(color=(255, 0, 0))
-    pen2 = pg.mkPen(color=(0, 0, 255), width=2, style=QtCore.Qt.DashLine)
     ui.graph2.showGrid(x=True, y=True)
     ui.graph2.plot(listX2,listY2,pen=pen)
 
