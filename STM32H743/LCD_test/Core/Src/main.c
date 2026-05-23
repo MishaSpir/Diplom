@@ -199,7 +199,7 @@ int main(void)
 
 
 
-		if(HAL_GetTick() - last_time >= 1){
+		if(HAL_GetTick() - last_time >= 5){
 			last_time = HAL_GetTick();
 //			HAL_UART_Transmit(&huart1, msg, sprintf((char*)msg,"Test"),0xFFFF);
 			HAL_ADC_Start(&hadc1);

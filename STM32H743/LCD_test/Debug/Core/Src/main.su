@@ -1,7 +1,7 @@
 ../Core/Src/main.c:70:13:LED_Blink	16	static
 ../Core/Src/main.c:83:13:RTC_CalendarShow	16	static
 ../Core/Src/main.c:93:6:HAL_TIM_PeriodElapsedCallback	16	static
-../Core/Src/main.c:111:5:main	72	static
+../Core/Src/main.c:111:5:main	80	static
 ../Core/Src/main.c:258:6:SystemClock_Config	120	static
 ../Core/Src/main.c:317:6:PeriphCommonClock_Config	200	static
 ../Core/Src/main.c:339:6:Error_Handler	8	static

@@ -18,6 +18,11 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "adc.h"
+#include "opamp.h"
+#include "tim.h"
+#include "usart.h"
+#include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -40,18 +45,27 @@
 
 /* Private variables ---------------------------------------------------------*/
 
-OPAMP_HandleTypeDef hopamp1;
-
 /* USER CODE BEGIN PV */
-
+volatile uint16_t adc_value;
+uint64_t last_time = 0;
+uint8_t msg[64];
+volatile uint32_t system_ticks = 0;  // Глобальный �?четчик тиков
+uint8_t adc_ready =0;
+uint8_t on = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_OPAMP1_Init(void);
+void PeriphCommonClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+        if(htim->Instance == TIM1)
+        {
+        	on = !on;
+        	HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, on);
+        }
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -81,6 +95,9 @@ int main(void)
   /* Configure the system clock */
   SystemClock_Config();
 
+/* Configure the peripherals common clocks */
+  PeriphCommonClock_Config();
+
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
@@ -88,8 +105,20 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_OPAMP1_Init();
+  MX_ADC1_Init();
+  MX_USART1_UART_Init();
+  MX_TIM6_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
+//  HAL_OPAMP_Start(&hopamp1);
+  // Изменим ко�?ф у�?илени�?
+  HAL_OPAMP_Stop(&hopamp1);
+  hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
   HAL_OPAMP_Start(&hopamp1);
+
+  HAL_TIM_Base_Start_IT(&htim1);
+   __HAL_TIM_SET_PRESCALER(&htim1,10-1);
+   __HAL_TIM_SET_AUTORELOAD(&htim1,100-1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -103,29 +132,42 @@ int main(void)
 //OPAMP_PGA_GAIN_4_OR_MINUS_3
 //OPAMP_PGA_GAIN_8_OR_MINUS_7
 //OPAMP_PGA_GAIN_16_OR_MINUS_15
-	  HAL_Delay(3000);
-	  counter ++;
-	  HAL_OPAMP_Stop(&hopamp1);
+//	  HAL_Delay(3000);
+//	  counter ++;
+//	  HAL_OPAMP_Stop(&hopamp1);
 
+	  if(HAL_GetTick() - last_time >= 1){
+	  			last_time = HAL_GetTick();
+	  //			HAL_UART_Transmit(&huart1, msg, sprintf((char*)msg,"Test"),0xFFFF);
+	  			HAL_ADC_Start(&hadc1);
+	  			HAL_ADC_PollForConversion(&hadc1, 1);
+	  			adc_value = HAL_ADC_GetValue(&hadc1);
+	  			HAL_ADC_Stop(&hadc1);
+	  			adc_ready = 1;
+	  			HAL_UART_Transmit(&huart1, msg, sprintf((char*)msg,"%d",adc_value),100);
+	  			HAL_UART_Transmit(&huart1, "\n", 1,100);
 
-	  switch(counter){
-	  	  case 1: hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_2_OR_MINUS_1;
-		  break;
-	  	  case 2: hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_4_OR_MINUS_3;
-		  break;
-	  	  case 3: hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_8_OR_MINUS_7;
-		  break;
-	  	  case 4: hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
-	  	  	  	  counter = 0;
-		  break;
-	  }
+	  		}
+//	  switch(counter){
+//	  	  case 1: hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_2_OR_MINUS_1;
+//		  break;
+//	  	  case 2: hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_4_OR_MINUS_3;
+//		  break;
+//	  	  case 3: hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_8_OR_MINUS_7;
+//		  break;
+//	  	  case 4: hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
+//	  	  	  	  counter = 0;
+//		  break;
+//	  }
       if (HAL_OPAMP_Init(&hopamp1) != HAL_OK)
        {
           Error_Handler();
        }
-      // Запускаем снова
-      HAL_OPAMP_Start(&hopamp1);
-	  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, 1);
+      // Запу�?каем �?нова
+//      HAL_OPAMP_Start(&hopamp1);
+
+//	  HAL_Delay(400);
+//	  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, 0);
   }
   /* USER CODE END 3 */
 }
@@ -152,10 +194,20 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_DIV1;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSIState = RCC_HSI_DIV2;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 5;
+  RCC_OscInitStruct.PLL.PLLN = 40;
+  RCC_OscInitStruct.PLL.PLLP = 2;
+  RCC_OscInitStruct.PLL.PLLQ = 2;
+  RCC_OscInitStruct.PLL.PLLR = 2;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_2;
+  RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
+  RCC_OscInitStruct.PLL.PLLFRACN = 0;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -166,7 +218,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
                               |RCC_CLOCKTYPE_D3PCLK1|RCC_CLOCKTYPE_D1PCLK1;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV1;
@@ -174,68 +226,28 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV1;
   RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
 }
 
 /**
-  * @brief OPAMP1 Initialization Function
-  * @param None
+  * @brief Peripherals Common Clock Configuration
   * @retval None
   */
-static void MX_OPAMP1_Init(void)
+void PeriphCommonClock_Config(void)
 {
+  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
 
-  /* USER CODE BEGIN OPAMP1_Init 0 */
-
-  /* USER CODE END OPAMP1_Init 0 */
-
-  /* USER CODE BEGIN OPAMP1_Init 1 */
-
-  /* USER CODE END OPAMP1_Init 1 */
-  hopamp1.Instance = OPAMP1;
-  hopamp1.Init.Mode = OPAMP_PGA_MODE;
-  hopamp1.Init.NonInvertingInput = OPAMP_NONINVERTINGINPUT_IO0;
-  hopamp1.Init.PowerMode = OPAMP_POWERMODE_NORMAL;
-  hopamp1.Init.PgaConnect = OPAMP_PGA_CONNECT_INVERTINGINPUT_NO;
-  hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_2_OR_MINUS_1;
-  hopamp1.Init.UserTrimming = OPAMP_TRIMMING_FACTORY;
-  if (HAL_OPAMP_Init(&hopamp1) != HAL_OK)
+  /** Initializes the peripherals clock
+  */
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_CKPER;
+  PeriphClkInitStruct.CkperClockSelection = RCC_CLKPSOURCE_HSI;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN OPAMP1_Init 2 */
-
-  /* USER CODE END OPAMP1_Init 2 */
-
-}
-
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOE_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : PE3 */
-  GPIO_InitStruct.Pin = GPIO_PIN_3;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
 }
 
 /* USER CODE BEGIN 4 */
