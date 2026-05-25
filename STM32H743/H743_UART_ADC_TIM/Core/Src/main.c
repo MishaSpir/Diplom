@@ -20,12 +20,13 @@
 #include "main.h"
 #include "adc.h"
 #include "dma.h"
+#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdbool.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,23 +50,35 @@ uint64_t last_time = 0;
 
 volatile uint8_t uart_tx_complete = 1;
 
-uint16_t adc_value[2];
-uint8_t tx_buffer_adc[4];
+volatile uint16_t adc_value[2];
+uint8_t tx_buffer_adc[5];
+bool adc_ready = false;
+bool led_flag = false;
 
 uint8_t tx_buffer[] = {0x01,0x02};
 uint8_t tx_buffer2[] = {0x03,0x04};
-uint8_t tx_combined[sizeof(tx_buffer) + sizeof(tx_buffer2)];
+uint8_t tx_combined[sizeof(tx_buffer) + sizeof(tx_buffer2) + 2];
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void PeriphCommonClock_Config(void);
 /* USER CODE BEGIN PFP */
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1) {
     	uart_tx_complete = 1;
+    }
+}
+
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+    if (hadc->Instance == ADC1) {
+        adc_ready = true;  // Сигнал, что еcть новые данные
+        led_flag = !led_flag;
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, led_flag);
+
     }
 }
 /* USER CODE END PFP */
@@ -97,9 +110,6 @@ int main(void)
   /* Configure the system clock */
   SystemClock_Config();
 
-/* Configure the peripherals common clocks */
-  PeriphCommonClock_Config();
-
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
@@ -109,10 +119,16 @@ int main(void)
   MX_DMA_Init();
   MX_USART1_UART_Init();
   MX_ADC1_Init();
-  MX_ADC2_Init();
+  MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_CALIB_OFFSET_LINEARITY, ADC_SINGLE_ENDED);
-  HAL_ADCEx_Calibration_Start(&hadc2, ADC_CALIB_OFFSET_LINEARITY, ADC_SINGLE_ENDED);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_value, 2);
+  HAL_TIM_Base_Start(&htim6);
+
+  tx_buffer_adc[4] = 0x0A; // Терминатор
+
+
+//  HAL_ADCEx_Calibration_Start(&hadc2, ADC_CALIB_OFFSET_LINEARITY, ADC_SINGLE_ENDED);
 
   /* USER CODE END 2 */
 
@@ -125,48 +141,69 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  if(HAL_GetTick() - last_time >= 1000){
-		  last_time = HAL_GetTick();
+//	  if(HAL_GetTick() - last_time >= 1000){
+//		  last_time = HAL_GetTick();
+//
+//		  memcpy(tx_combined, tx_buffer, sizeof(tx_buffer));
+//		  memcpy(tx_combined + sizeof(tx_buffer), tx_buffer2, sizeof(tx_buffer2));
+//
+//
+//		  tx_buffer_adc[0] = (adc_value[0] >> 8) & 0xFF;  // �?тарший байт:
+//		  tx_buffer_adc[1] = adc_value[0] & 0xFF;         // младший байт:
+//
+//		  tx_buffer_adc[2] = (adc_value[1] >> 8) & 0xFF;  // �?тарший байт:
+//		  tx_buffer_adc[3] = adc_value[1] & 0xFF;         // младший байт:
+//
+//
+//		  if (uart_tx_complete) {
+//			  uart_tx_complete = 0;
+//			  HAL_UART_Transmit_IT(&huart1, &tx_buffer_adc, sizeof(tx_buffer_adc));
 
-		  memcpy(tx_combined, tx_buffer, sizeof(tx_buffer));
-		  memcpy(tx_combined + sizeof(tx_buffer), tx_buffer2, sizeof(tx_buffer2));
+//			HAL_ADC_Start(&hadc1);
+//			HAL_ADC_PollForConversion(&hadc1, 100);
+//			HAL_ADC_Stop(&hadc1);
+//			adc_value[0] = HAL_ADC_GetValue(&hadc1);
 
-
-		  tx_buffer_adc[0] = (adc_value[0] >> 8) & 0xFF;  // старший байт:
-		  tx_buffer_adc[1] = adc_value[0] & 0xFF;         // младший байт:
-
-		  tx_buffer_adc[2] = (adc_value[1] >> 8) & 0xFF;  // старший байт:
-		  tx_buffer_adc[3] = adc_value[1] & 0xFF;         // младший байт:
-
-
-		  if (uart_tx_complete) {
-			  uart_tx_complete = 0;
-			  HAL_UART_Transmit_IT(&huart1, &tx_buffer_adc, sizeof(tx_buffer_adc));
-
-			HAL_ADC_Start(&hadc1);
-			HAL_ADC_PollForConversion(&hadc1, 100);
-			HAL_ADC_Stop(&hadc1);
-			adc_value[0] = HAL_ADC_GetValue(&hadc1);
-
-			HAL_ADC_Start(&hadc2);
-			HAL_ADC_PollForConversion(&hadc2, 100);
-			HAL_ADC_Stop(&hadc2);
-			adc_value[1] = HAL_ADC_GetValue(&hadc2);
-		  }
+//			HAL_ADC_Start(&hadc2);
+//			HAL_ADC_PollForConversion(&hadc2, 100);
+//			HAL_ADC_Stop(&hadc2);
+//			adc_value[1] = HAL_ADC_GetValue(&hadc2);
+//		  }
 //		  adc_value[0] = 100;
 //		  adc_value[1] = 200;
-//		  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_value, 1);
 //		  HAL_Delay(1000);
 
 //	      HAL_UART_Transmit_IT(&huart1, tx_buffer, sizeof(tx_buffer));
 //	  	  while(huart1.gState == HAL_UART_STATE_BUSY_TX){
 //	  	  }
 //	  	  HAL_UART_Transmit_IT(&huart1, tx_buffer2, sizeof(tx_buffer2));
-	  	  // По�?ылка, блокирующа�? функци�?
+
 //	  	  HAL_UART_Transmit(&huart1, tx_buffer, sizeof(tx_buffer),0xFFFF);
 //	  	  HAL_UART_Transmit(&huart1, "\n", 1,100);
 
-	 }
+//	 }
+
+		  if (adc_ready){
+			  adc_ready = false;
+              // Копируем данные �? защитой от прерываний
+              __disable_irq();
+              uint16_t val1 = adc_value[0];
+              uint16_t val2 = adc_value[1];
+              __enable_irq();
+
+              // Упаковываем в 4 байта
+              tx_buffer_adc[0] = (val1 >> 8) & 0xFF;  // �?тарший байт канала 1
+              tx_buffer_adc[1] = val1 & 0xFF;         // младший байт канала 1
+              tx_buffer_adc[2] = (val2 >> 8) & 0xFF;  // �?тарший байт канала 2
+              tx_buffer_adc[3] = val2 & 0xFF;         // младший байт канала 2
+
+
+              // Отправл�?ем, е�?ли UART �?вободен
+              if (uart_tx_complete) {
+                 uart_tx_complete = 0;
+                 HAL_UART_Transmit_IT(&huart1, tx_buffer_adc, 5);
+             }
+		  }
   }
   /* USER CODE END 3 */
 }
@@ -230,32 +267,6 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-}
-
-/**
-  * @brief Peripherals Common Clock Configuration
-  * @retval None
-  */
-void PeriphCommonClock_Config(void)
-{
-  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-
-  /** Initializes the peripherals clock
-  */
-  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_ADC;
-  PeriphClkInitStruct.PLL2.PLL2M = 5;
-  PeriphClkInitStruct.PLL2.PLL2N = 40;
-  PeriphClkInitStruct.PLL2.PLL2P = 5;
-  PeriphClkInitStruct.PLL2.PLL2Q = 2;
-  PeriphClkInitStruct.PLL2.PLL2R = 2;
-  PeriphClkInitStruct.PLL2.PLL2RGE = RCC_PLL2VCIRANGE_2;
-  PeriphClkInitStruct.PLL2.PLL2VCOSEL = RCC_PLL2VCOWIDE;
-  PeriphClkInitStruct.PLL2.PLL2FRACN = 0;
-  PeriphClkInitStruct.AdcClockSelection = RCC_ADCCLKSOURCE_PLL2;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
     Error_Handler();
   }
