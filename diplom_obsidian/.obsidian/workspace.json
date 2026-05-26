@@ -39,16 +39,40 @@
             "id": "321b01aac2a4dd98",
             "type": "leaf",
             "state": {
+              "type": "markdown",
+              "state": {
+                "file": "радар/Что делал.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Что делал"
+            }
+          },
+          {
+            "id": "4e994047b11da553",
+            "type": "leaf",
+            "state": {
               "type": "image",
               "state": {
-                "file": "Pasted image 20260526004150.png"
+                "file": "Pasted image 20260526174320.png"
               },
               "icon": "lucide-image",
-              "title": "Pasted image 20260526004150"
+              "title": "Pasted image 20260526174320"
+            }
+          },
+          {
+            "id": "3a76b20ddf7a351f",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "Новая вкладка"
             }
           }
         ],
-        "currentTab": 2
+        "currentTab": 3
       }
     ],
     "direction": "vertical"
@@ -210,22 +234,24 @@
       "bases:Создать новую базу": false
     }
   },
-  "active": "b07990f92120bec6",
+  "active": "4e994047b11da553",
   "lastOpenFiles": [
     "радар/Что делал.md",
+    "Pasted image 20260526174320.png",
+    "Pasted image 20260526155228.png",
+    "радар/Плата.md",
+    "Pasted image 20260526142923.png",
+    "Pasted image 20260526142625.png",
+    "Pasted image 20260526140748.png",
+    "Pasted image 20260526134501.png",
     "Pasted image 20260526004150.png",
     "Pasted image 20260525235753.png",
-    "радар/Плата.md",
     "Pasted image 20260513170101.png",
     "Pasted image 20260513171236.png",
     "радар/радар IVS-565.md",
     "2026-05-12_15-12-38.mp4",
     "2026-05-12_16-40-23.mp4",
     "радар/Теория.md",
-    "Pasted image 20260513165323.png",
-    "Pasted image 20260513165307.png",
-    "Pasted image 20260513165031.png",
-    "Pasted image 20260508171543.png",
     "2026-05-06_15-49-41.mp4",
     "2026-05-07_17-47-50.mp4",
     "GUI.md",
@@ -234,8 +260,6 @@
     "GUI",
     "ОБЩАЯ ТЕОРИЯ.md",
     "Инфа.md",
-    "Gol_page.jpg",
-    "Images/Pasted image 20260507150552.png",
     "радар/Плата развития WEACT.md",
     "UART на linux Mint 21.md",
     "радар/радар K-LD7.md",

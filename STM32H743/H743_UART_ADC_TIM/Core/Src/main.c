@@ -20,6 +20,7 @@
 #include "main.h"
 #include "adc.h"
 #include "dma.h"
+#include "opamp.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -120,10 +121,19 @@ int main(void)
   MX_USART1_UART_Init();
   MX_ADC1_Init();
   MX_TIM6_Init();
+  MX_OPAMP1_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_CALIB_OFFSET_LINEARITY, ADC_SINGLE_ENDED);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_value, 2);
   HAL_TIM_Base_Start(&htim6);
+
+  HAL_OPAMP_Stop(&hopamp1);                    // Останавливаем если был запущен
+  hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;  // Устанавливаем усиление
+  if (HAL_OPAMP_Init(&hopamp1) != HAL_OK)      // Инициализируем с новыми параметрами
+  {
+      Error_Handler();
+  }
+  HAL_OPAMP_Start(&hopamp1);                   // Запускаем OPAMP
 
   tx_buffer_adc[4] = 0x0A; // Терминатор
 
