@@ -14,7 +14,7 @@ UPDATE_INTERVAL_MS = 1000
 MAX_PENDING = 100
 
 # Параметры фильтра
-CUTOFF_FREQ = 100
+CUTOFF_FREQ = 200
 SAMPLING_RATE = 10000
 
 buffer = bytearray()
@@ -47,7 +47,7 @@ def init_lowpass_filter(cutoff_freq, sampling_rate, order=2):
     return b, a, zi
 
 # Инициализируем фильтр
-b, a, filter_state = init_lowpass_filter(CUTOFF_FREQ, SAMPLING_RATE, order=2)
+b, a, filter_state = init_lowpass_filter(CUTOFF_FREQ, SAMPLING_RATE, order=4)
 
 def apply_lowpass_filter(data_point):
     """Применяет LOWPASS фильтр к одному значению (int -> float)"""
@@ -80,7 +80,7 @@ if __name__ == '__main__':
     curve_filtered = ui.graph2.plot(listX, listY_filtered, pen=pen_filtered)
     
     # Линия для СЫРОГО сигнала (красная) - int значения
-    pen_raw = pg.mkPen(color=(255, 0, 0), width=1)
+    pen_raw = pg.mkPen(color=(255, 0, 0), width=0.5)
     curve_raw = ui.graph2.plot(listX, listY_raw, pen=pen_raw)
     
     # НАСТРОЙКА ВЕРХНЕГО ГРАФИКА (graph) - второй канал
@@ -200,7 +200,7 @@ if __name__ == '__main__':
             print(f"Тип данных АЦП: 16-битные целые числа (0-65535)")
             
             # Сбрасываем состояние фильтра при открытии
-            _, _, filter_state = init_lowpass_filter(CUTOFF_FREQ, SAMPLING_RATE, order=2)
+            _, _, filter_state = init_lowpass_filter(CUTOFF_FREQ, SAMPLING_RATE, order=4)
             
             if graph_timer is None:
                 graph_timer = QTimer()
