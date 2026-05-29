@@ -36,7 +36,7 @@
             }
           },
           {
-            "id": "321b01aac2a4dd98",
+            "id": "188d443ebf114805",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -47,28 +47,6 @@
               },
               "icon": "lucide-file",
               "title": "Что делал"
-            }
-          },
-          {
-            "id": "4e994047b11da553",
-            "type": "leaf",
-            "state": {
-              "type": "image",
-              "state": {
-                "file": "Pasted image 20260526174320.png"
-              },
-              "icon": "lucide-image",
-              "title": "Pasted image 20260526174320"
-            }
-          },
-          {
-            "id": "3a76b20ddf7a351f",
-            "type": "leaf",
-            "state": {
-              "type": "empty",
-              "state": {},
-              "icon": "lucide-file",
-              "title": "Новая вкладка"
             }
           }
         ],
@@ -234,25 +212,26 @@
       "bases:Создать новую базу": false
     }
   },
-  "active": "321b01aac2a4dd98",
+  "active": "188d443ebf114805",
   "lastOpenFiles": [
+    "Pasted image 20260529142933.png",
+    "Pasted image 20260528171049.png",
+    "Pasted image 20260528164357.png",
+    "Pasted image 20260528163927.png",
+    "радар/Плата.md",
+    "Pasted image 20260528152507.png",
+    "Pasted image 20260528152422.png",
+    "радар/Что делал.md",
+    "радар/Теория.md",
+    "Images/Pasted image 20260527153531.png",
+    "Images/Pasted image 20260508171543.png",
+    "GOL.jpg",
     "Diplom_test1.mp4",
     "Images/Pasted image 20260427152054.png",
-    "радар/Что делал.md",
-    "радар/Плата.md",
-    "Pasted image 20260527153531.png",
-    "Pasted image 20260527151808.png",
-    "Pasted image 20260527150540.png",
-    "Pasted image 20260526174320.png",
-    "Pasted image 20260526155228.png",
-    "Pasted image 20260526142923.png",
-    "Pasted image 20260526142625.png",
-    "Pasted image 20260526140748.png",
-    "Pasted image 20260526134501.png",
+    "Images/Pasted image 20260527151808.png",
     "радар/радар IVS-565.md",
     "2026-05-12_15-12-38.mp4",
     "2026-05-12_16-40-23.mp4",
-    "радар/Теория.md",
     "2026-05-06_15-49-41.mp4",
     "2026-05-07_17-47-50.mp4",
     "GUI.md",
