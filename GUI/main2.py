@@ -31,6 +31,8 @@ graph_timer = None
 OnPlot2_flag = False
 OnPlot2Filter_flag = False
 
+led_state = 0
+
 def init_lowpass_filter(cutoff_freq, sampling_rate, order=2):
     """Инициализация LOWPASS фильтра Баттерворта"""
     nyquist = sampling_rate / 2
@@ -225,12 +227,41 @@ if __name__ == '__main__':
 
     def OnPlot2Filter():
         global OnPlot2Filter_flag
-        OnPlot2Filter_flag = not OnPlot2Filter_flag        
+        OnPlot2Filter_flag = not OnPlot2Filter_flag    
+
+    def LED_toggle(val):
+        if val:
+            led_state = 1
+        else:
+            led_state = 0    
+        print(led_state)
+        SerialSend(led_state)
+
+    def OpAmp_cnahge(val):
+        val = pow(2,val)
+        if val > 16:
+            val = 16
+        SerialSend(val)
+   
+
+    def SerialSend(data): # int
+        tx_send_buf = bytearray()    
+        tx_send_buf.append(0x24)           # Команда/маркер начала
+        tx_send_buf.append(data & 0xFF)    # Данные (обрезаем до 1 байта)
+        tx_send_buf.append(0x0A)           # Терминатор \n
+        serial.write(tx_send_buf)
+        print(f"Отправлено: {tx_send_buf.hex().upper()}")
+
+    
+
     
     # Подключение сигналов
     serial.readyRead.connect(OnRead)
     ui.openBtn.clicked.connect(OnOpen)
     ui.closeBtn.clicked.connect(OnClose)
+    ui.LED_btn.clicked.connect(LED_toggle)
+    ui.OpAmpSlider.valueChanged.connect(OpAmp_cnahge)
+
 
     ui.gaph2_on.clicked.connect(OnPlot2)
     ui.graph2_filter_on.clicked.connect(OnPlot2Filter) 
