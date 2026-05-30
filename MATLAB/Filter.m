@@ -7,7 +7,7 @@ Fs = 10000;
 %далее сымитируем дискретный сигнал
 t = 0:1/Fs:0.200;
 t = t';
-Am2 = 1; F = 175; Phi2 = 0; W2 = 2*pi*F;
+Am2 = 1; F = 155; Phi2 = 0; W2 = 2*pi*F;
 noise(1,1:length(t)) = 0;
 noise = noise';
 
@@ -131,8 +131,11 @@ for i = 1 : length(Sig)
          
 end
 
-F_found = 1 * count_one_period / 0.05; 
+F_found =   count_one_period / 0.05; 
+F_found2 =  count / (4*0.05); 
 subplot(3,1,3);
-plot(t*1000,comp)
-title(compose('count = %d, count one period = %d, F found = %.2f',count,count_one_period,F_found));
+plot(t*1000,comp,'LineWidth',1.5), grid on;
+title(compose('count = %d, count one period = %d, F found = %.2f, F found 2 = %.2f',count,count_one_period,F_found,F_found2));
 
+%---------
+%Дописать пример от ИИ (там точность больше)

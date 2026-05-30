@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "dac.h"
+#include "tim.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -43,13 +44,25 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+uint32_t DAC_in;
+uint32_t SawDac;
+float SawAmpVol = 1.5;
+float OffsetVol = 1.0;
+uint32_t SawAmpDac;
+uint32_t OffsetDac;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+	    if(htim->Instance == TIM7){
+                HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_3);
+                SawDac +=1;
+                SawDac = (SawDac % SawAmpDac);
+                if(SawDac>=SawAmpDac){DAC_in = SawAmpDac;}
+        }
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -86,8 +99,18 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DAC1_Init();
+  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
   HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
+  HAL_TIM_Base_Start_IT(&htim7);// прерывание по update
+  DAC_in = 0;
+  SawDac = 0;
+  SawAmpDac = SawAmpVol * (4095 / 3.22);
+  OffsetDac = OffsetVol * (4095 / 3.22);
+
+  __HAL_TIM_SET_PRESCALER(&htim7,99);
+  __HAL_TIM_SET_AUTORELOAD(&htim7,99);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -97,37 +120,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_1,DAC_ALIGN_12B_R,0x00000000);
-
-	                  HAL_Delay(2);
-
-	                  HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_1,DAC_ALIGN_12B_R,0x00000280);
-
-	                  HAL_Delay(2);
-
-	                  HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_1,DAC_ALIGN_12B_R,0x00000500);
-
-	                  HAL_Delay(2);
-
-	                  HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_1,DAC_ALIGN_12B_R,0x00000780);
-
-	                  HAL_Delay(2);
-
-	                  HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_1,DAC_ALIGN_12B_R,0x00000999);
-
-	                  HAL_Delay(2);
-
-	                  HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_1,DAC_ALIGN_12B_R,0x00000780);
-
-	                  HAL_Delay(2);
-
-	                  HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_1,DAC_ALIGN_12B_R,0x00000500);
-
-	                  HAL_Delay(2);
-
-	                  HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_1,DAC_ALIGN_12B_R,0x00000280);
-
-	                  HAL_Delay(2);
+	  HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_1,DAC_ALIGN_12B_R,DAC_in);
+//      HAL_Delay(2);
+      DAC_in = SawDac + 1365;
   }
   /* USER CODE END 3 */
 }
