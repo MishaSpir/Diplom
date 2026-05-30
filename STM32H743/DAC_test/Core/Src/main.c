@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "dac.h"
+#include "dma.h"
 #include "tim.h"
 #include "gpio.h"
 
@@ -34,6 +35,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define DAC_BUFFER_SIZE 256
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,21 +50,25 @@ uint32_t DAC_in;
 uint32_t SawDac;
 float SawAmpVol = 1.5;
 float OffsetVol = 1.0;
+uint32_t SawPeriodMs;    // Период пилы в миллисекундах
 uint32_t SawAmpDac;
 uint32_t OffsetDac;
+
+
+volatile uint16_t dac_buffer[DAC_BUFFER_SIZE];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-	    if(htim->Instance == TIM7){
-                HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_3);
-                SawDac +=1;
-                SawDac = (SawDac % SawAmpDac);
-                if(SawDac>=SawAmpDac){DAC_in = SawAmpDac;}
-        }
-}
+void CalculateSawtoothBuffer(void);
+void UpdateSawtooth(float , float , float );
+
+
+//                HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_3);
+//                SawDac +=1;
+//                SawDac = (SawDac % SawAmpDac);
+//                if(SawDac>=SawAmpDac){DAC_in = SawAmpDac;}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -98,18 +104,25 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_DAC1_Init();
   MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
-  HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
-  HAL_TIM_Base_Start_IT(&htim7);// прерывание по update
+
+
+//  HAL_TIM_Base_Start_IT(&htim7);// прерывание по update
   DAC_in = 0;
   SawDac = 0;
-  SawAmpDac = SawAmpVol * (4095 / 3.22);
-  OffsetDac = OffsetVol * (4095 / 3.22);
+  CalculateSawtoothBuffer();
+  UpdateSawtooth(1.5,1.5,15);
+  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1,(uint32_t*)dac_buffer,DAC_BUFFER_SIZE,DAC_ALIGN_12B_R);
+  HAL_TIM_Base_Start(&htim7);
 
-  __HAL_TIM_SET_PRESCALER(&htim7,99);
-  __HAL_TIM_SET_AUTORELOAD(&htim7,99);
+
+//  __HAL_TIM_SET_PRESCALER(&htim7,99);
+//  __HAL_TIM_SET_AUTORELOAD(&htim7,99);
+
+
 
   /* USER CODE END 2 */
 
@@ -120,9 +133,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_1,DAC_ALIGN_12B_R,DAC_in);
+//	  HAL_DAC_SetValue(&hdac1,DAC_CHANNEL_1,DAC_ALIGN_12B_R,DAC_in);
 //      HAL_Delay(2);
-      DAC_in = SawDac + 1365;
+//      DAC_in = SawDac + 1365;
   }
   /* USER CODE END 3 */
 }
@@ -186,7 +199,61 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void CalculateSawtoothBuffer(void)
+{
+    for (int i = 0; i < DAC_BUFFER_SIZE; i++) {
+        // Линейное нара�?тание от 0 до SawAmpDac
+        uint32_t value = (i * SawAmpDac) / (DAC_BUFFER_SIZE - 1);
+        value += OffsetDac;
 
+        // Ограничение
+        if (value > 4095) value = 4095;
+        if (value < 0) value = 0;
+
+        dac_buffer[i] = (uint16_t)value;
+    }
+}
+
+// Функция обновления параметров пилы
+void UpdateSawtooth(float amplitude_volts, float offset_volts, float period_ms)
+{
+    // Конвертация вольт в коды DAC (Vref = 3.3V)
+    SawAmpDac = (uint32_t)(amplitude_volts * 4095.0f / 3.3f);
+    OffsetDac = (uint32_t)(offset_volts * 4095.0f / 3.3f);
+    SawPeriodMs = (uint32_t)period_ms;
+
+
+
+    // Пересчитать частоту таймера
+    // Частота DAC обновления = DAC_BUFFER_SIZE / (period_ms / 1000)
+    uint32_t dac_freq_hz = (DAC_BUFFER_SIZE * 1000) / SawPeriodMs;
+
+    // Настройка таймера (TIM7) для нужной частоты
+    // При APB1 = 100 МГц
+    uint32_t timer_clock = 100000000;  // 100 МГц
+    uint32_t prescaler = 0;
+    uint32_t period = 0;
+
+    // Подбор делителей
+    uint32_t total_divider = timer_clock / dac_freq_hz;
+
+    // Если делитель небольшой, то prescaler = 0
+    if (total_divider <= 65536) {
+        prescaler = 0;
+        period = total_divider - 1;
+    }
+    // Если делитель больше 65536, нужно использовать prescaler
+    else {
+        // Ищем prescaler такой, чтобы period не превышал 65535
+        prescaler = total_divider / 65536;
+        period = (total_divider / (prescaler + 1)) - 1;
+    }
+    __HAL_TIM_SET_PRESCALER(&htim7, prescaler);
+    __HAL_TIM_SET_AUTORELOAD(&htim7, period);
+
+    // Пересчитать буфер
+    CalculateSawtoothBuffer();
+}
 /* USER CODE END 4 */
 
 /**
