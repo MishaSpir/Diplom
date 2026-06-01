@@ -67,7 +67,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
           {
         	  if(rx_index == 0){
                   if (rx_buffer[0] != PACKET_PREAMBLE) {
-                      // �?еправильна�? преамбула - �?бра�?ываем и ждем заново
+                      // Ð?ÐµÐ¿Ñ€Ð°Ð²Ð¸Ð»ÑŒÐ½Ð°Ñ? Ð¿Ñ€ÐµÐ°Ð¼Ð±ÑƒÐ»Ð° - Ñ?Ð±Ñ€Ð°Ñ?Ñ‹Ð²Ð°ÐµÐ¼ Ð¸ Ð¶Ð´ÐµÐ¼ Ð·Ð°Ð½Ð¾Ð²Ð¾
                       rx_index = 0;
                       HAL_UART_Receive_IT(&huart1, &rx_buffer[rx_index], 1);
                       return;
@@ -75,14 +75,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         	  }
 
               rx_index++;
-              // Е�?ли прин�?ли ве�?ь пакет
+              // Ð•Ñ?Ð»Ð¸ Ð¿Ñ€Ð¸Ð½Ñ?Ð»Ð¸ Ð²ÐµÑ?ÑŒ Ð¿Ð°ÐºÐµÑ‚
               if (rx_index >= PACKET_SIZE) {
-                  // Провер�?ем терминатор
+                  // ÐŸÑ€Ð¾Ð²ÐµÑ€Ñ?ÐµÐ¼ Ñ‚ÐµÑ€Ð¼Ð¸Ð½Ð°Ñ‚Ð¾Ñ€
                   if (rx_buffer[2] == PACKET_TERMINATOR) {
                       packet_ready = 1;
                       received_data = rx_buffer[1];
                   }
-                  rx_index = 0;  // Сбро�? дл�? �?ледующего пакета
+                  rx_index = 0;  // Ð¡Ð±Ñ€Ð¾Ñ? Ð´Ð»Ñ? Ñ?Ð»ÐµÐ´ÑƒÑŽÑ‰ÐµÐ³Ð¾ Ð¿Ð°ÐºÐµÑ‚Ð°
               }
 
               HAL_UART_Receive_IT(&huart1, &rx_buffer[rx_index], 1);

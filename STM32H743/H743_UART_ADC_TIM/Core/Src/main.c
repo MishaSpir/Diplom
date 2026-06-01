@@ -28,6 +28,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stdbool.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -37,6 +38,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define PACKET_PREAMBLE  0x24
+#define PACKET_TERMINATOR 0x0A
+#define PACKET_SIZE 3
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -60,6 +64,20 @@ uint8_t tx_buffer[] = {0x01,0x02};
 uint8_t tx_buffer2[] = {0x03,0x04};
 uint8_t tx_combined[sizeof(tx_buffer) + sizeof(tx_buffer2) + 2];
 
+uint8_t rx_buffer[PACKET_SIZE];
+uint8_t rx_index = 0;
+volatile uint8_t packet_ready = 0;
+volatile uint8_t received_data = 0;
+volatile uint8_t received_byte = 0;
+volatile uint8_t synced = 0;  // Флаг �?инхронизации
+uint32_t last_byte_time = 0;
+
+typedef enum {
+    WAIT_PREAMBLE,
+    WAIT_DATA,
+    WAIT_TERMINATOR
+} UART_State_t;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -72,14 +90,81 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     }
 }
 
+UART_State_t uart_state = WAIT_PREAMBLE;
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if(huart == &huart1)
+    {
+    	 // Провер�?ем наличие ошибок
+    	        if (__HAL_UART_GET_FLAG(huart, UART_FLAG_ORE)) {
+    	            __HAL_UART_CLEAR_FLAG(huart, UART_FLAG_ORE);
+    	            // Сбро�? �?о�?то�?ни�? при ошибке переполнени�?
+    	            uart_state = WAIT_PREAMBLE;
+    	            HAL_UART_Receive_IT(&huart1, &received_byte, 1);
+    	            return;
+    	        }
+
+    	        if (__HAL_UART_GET_FLAG(huart, UART_FLAG_FE)) {
+    	            __HAL_UART_CLEAR_FLAG(huart, UART_FLAG_FE);
+    	            uart_state = WAIT_PREAMBLE;
+    	            HAL_UART_Receive_IT(&huart1, &received_byte, 1);
+    	            return;
+    	        }
+
+    	        if (__HAL_UART_GET_FLAG(huart, UART_FLAG_NE)) {
+    	            __HAL_UART_CLEAR_FLAG(huart, UART_FLAG_NE);
+    	            uart_state = WAIT_PREAMBLE;
+    	            HAL_UART_Receive_IT(&huart1, &received_byte, 1);
+    	            return;
+    	        }
+
+
+        last_byte_time = HAL_GetTick();
+
+        switch (uart_state) {
+            case WAIT_PREAMBLE:
+                if (received_byte == PACKET_PREAMBLE) {
+                    uart_state = WAIT_DATA;
+                }
+                break;
+
+            case WAIT_DATA:
+            	received_data = received_byte;
+                uart_state = WAIT_TERMINATOR;
+                break;
+
+            case WAIT_TERMINATOR:
+                if (received_byte == PACKET_TERMINATOR) {
+                    packet_ready = 1;
+                } else {
+//                    // �?еправильный терминатор - отладочный вывод
+//                    char dbg[32];
+//                    sprintf(dbg, "Err: 0x%02X (exp 0x0A)\r\n", received_byte);
+//                    HAL_UART_Transmit(&huart1, (uint8_t*)dbg, strlen(dbg), 100);
+                }
+                uart_state = WAIT_PREAMBLE;  // В�?егда �?бро�?
+                break;
+        }
+
+        HAL_UART_Receive_IT(&huart1, &received_byte, 1);
+    }
+}
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
     if (hadc->Instance == ADC1) {
         adc_ready = true;  // Сигнал, что еcть новые данные
         led_flag = !led_flag;
-        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, led_flag);
+//        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, led_flag);
 
+    }
+}
+
+void CheckUARTTimeout(void)
+{
+    if (uart_state != WAIT_PREAMBLE && (HAL_GetTick() - last_byte_time > 100)) {
+        uart_state = WAIT_PREAMBLE;  // Таймаут - �?бро�? �?о�?то�?ни�?
     }
 }
 /* USER CODE END PFP */
@@ -127,16 +212,15 @@ int main(void)
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_value, 2);
   HAL_TIM_Base_Start(&htim6);
 
-  HAL_OPAMP_Stop(&hopamp1);                    // Останавливаем если был запущен
-  hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;  // Устанавливаем усиление
-  if (HAL_OPAMP_Init(&hopamp1) != HAL_OK)      // Инициализируем с новыми параметрами
+  HAL_OPAMP_Stop(&hopamp1);                    // О�?танавливаем е�?ли был запущен
+  hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;  // У�?танавливаем у�?иление
+  if (HAL_OPAMP_Init(&hopamp1) != HAL_OK)      // Инициализируем �? новыми параметрами
   {
       Error_Handler();
   }
-  HAL_OPAMP_Start(&hopamp1);                   // Запускаем OPAMP
-
+  HAL_OPAMP_Start(&hopamp1);                   // Запу�?каем OPAMP
   tx_buffer_adc[4] = 0x0A; // Терминатор
-
+  HAL_UART_Receive_IT(&huart1, &received_byte, 1);
 
 //  HAL_ADCEx_Calibration_Start(&hadc2, ADC_CALIB_OFFSET_LINEARITY, ADC_SINGLE_ENDED);
 
@@ -151,47 +235,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//	  if(HAL_GetTick() - last_time >= 1000){
-//		  last_time = HAL_GetTick();
-//
-//		  memcpy(tx_combined, tx_buffer, sizeof(tx_buffer));
-//		  memcpy(tx_combined + sizeof(tx_buffer), tx_buffer2, sizeof(tx_buffer2));
-//
-//
-//		  tx_buffer_adc[0] = (adc_value[0] >> 8) & 0xFF;  // �?тарший байт:
-//		  tx_buffer_adc[1] = adc_value[0] & 0xFF;         // младший байт:
-//
-//		  tx_buffer_adc[2] = (adc_value[1] >> 8) & 0xFF;  // �?тарший байт:
-//		  tx_buffer_adc[3] = adc_value[1] & 0xFF;         // младший байт:
-//
-//
-//		  if (uart_tx_complete) {
-//			  uart_tx_complete = 0;
-//			  HAL_UART_Transmit_IT(&huart1, &tx_buffer_adc, sizeof(tx_buffer_adc));
 
-//			HAL_ADC_Start(&hadc1);
-//			HAL_ADC_PollForConversion(&hadc1, 100);
-//			HAL_ADC_Stop(&hadc1);
-//			adc_value[0] = HAL_ADC_GetValue(&hadc1);
-
-//			HAL_ADC_Start(&hadc2);
-//			HAL_ADC_PollForConversion(&hadc2, 100);
-//			HAL_ADC_Stop(&hadc2);
-//			adc_value[1] = HAL_ADC_GetValue(&hadc2);
-//		  }
-//		  adc_value[0] = 100;
-//		  adc_value[1] = 200;
-//		  HAL_Delay(1000);
-
-//	      HAL_UART_Transmit_IT(&huart1, tx_buffer, sizeof(tx_buffer));
-//	  	  while(huart1.gState == HAL_UART_STATE_BUSY_TX){
-//	  	  }
-//	  	  HAL_UART_Transmit_IT(&huart1, tx_buffer2, sizeof(tx_buffer2));
-
-//	  	  HAL_UART_Transmit(&huart1, tx_buffer, sizeof(tx_buffer),0xFFFF);
-//	  	  HAL_UART_Transmit(&huart1, "\n", 1,100);
-
-//	 }
 
 		  if (adc_ready){
 			  adc_ready = false;
@@ -214,6 +258,41 @@ int main(void)
                  HAL_UART_Transmit_IT(&huart1, tx_buffer_adc, 5);
              }
 		  }
+
+		  if(packet_ready){
+		  		  packet_ready = 0;
+//		  	 	  HAL_UART_Transmit_IT(&huart1,  (uint8_t *)received_data, 1);
+		  	 if (received_data == 0x01) {
+		  		 HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, GPIO_PIN_SET);
+		  	 } else if (received_data == 0x00) {
+		  	     HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, GPIO_PIN_RESET);
+		  	 }
+		  	 if(received_data > 0x01){
+		  		 switch (received_data){
+		  		 	 case 0x02:  HAL_OPAMP_Stop(&hopamp1);
+		  		 	 	 	 	 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_2_OR_MINUS_1;
+		  		 	 	 	 	 break;
+		  		 	 case 0x04:  HAL_OPAMP_Stop(&hopamp1);
+		  		 	 	 	 	 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_4_OR_MINUS_3;
+		  		 	 	 	 	 break;
+		  		 	 case 0x08:  HAL_OPAMP_Stop(&hopamp1);
+		  		 	 	 	 	 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_8_OR_MINUS_7;
+		  		 	 	 	 	 break;
+		  		 	 case 0x10:  HAL_OPAMP_Stop(&hopamp1);
+		  		 	 	 	 	 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
+		  		 	 	 	 	 break;
+		  		 	 default:	 HAL_OPAMP_Stop(&hopamp1);
+		  		 	 	 	 	 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
+		  		 	 	 	 	 break;
+		  		 }
+		         if (HAL_OPAMP_Init(&hopamp1) != HAL_OK) {
+		             Error_Handler();
+		         }
+		  		 HAL_OPAMP_Start(&hopamp1);                   // Запу�?каем OPAMP
+		  	 }
+		  }
+
+		  CheckUARTTimeout();
   }
   /* USER CODE END 3 */
 }

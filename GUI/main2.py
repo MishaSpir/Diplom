@@ -10,7 +10,7 @@ import time
 
 # Константы
 GRAPH_LENGTH_POINTS = 1000
-UPDATE_INTERVAL_MS = 1000
+UPDATE_INTERVAL_MS = 200
 MAX_PENDING = 100
 
 # Параметры фильтра

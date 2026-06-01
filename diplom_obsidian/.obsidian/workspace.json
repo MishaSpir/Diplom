@@ -39,14 +39,12 @@
             "id": "188d443ebf114805",
             "type": "leaf",
             "state": {
-              "type": "markdown",
+              "type": "video",
               "state": {
-                "file": "радар/Что делал.md",
-                "mode": "source",
-                "source": false
+                "file": "2026-06-01_12-03-54.mp4"
               },
               "icon": "lucide-file",
-              "title": "Что делал"
+              "title": "2026-06-01_12-03-54"
             }
           },
           {
@@ -242,8 +240,14 @@
   },
   "active": "188d443ebf114805",
   "lastOpenFiles": [
-    "Шпаргалка по функциям HAL.md",
+    "2026-06-01_11-45-08.mp4",
+    "2026-06-01_12-03-54.mp4",
     "радар/Что делал.md",
+    "2026-06-01_11-37-58.mp4",
+    "2026-06-01_10-47-19.mp4",
+    "Pasted image 20260530175109.png",
+    "Pasted image 20260530174719.png",
+    "Шпаргалка по функциям HAL.md",
     "2026-05-12_16-40-23.mp4",
     "Pasted image 20260530144206.png",
     "ОБЩАЯ ТЕОРИЯ.md",
@@ -257,8 +261,6 @@
     "Pasted image 20260528152507.png",
     "Pasted image 20260528152422.png",
     "радар/Теория.md",
-    "Images/Pasted image 20260527153531.png",
-    "Images/Pasted image 20260508171543.png",
     "Diplom_test1.mp4",
     "радар/радар IVS-565.md",
     "2026-05-12_15-12-38.mp4",
@@ -266,13 +268,11 @@
     "2026-05-07_17-47-50.mp4",
     "GUI.md",
     "2026-05-04_16-05-10.mp4",
-    "GUI",
     "Инфа.md",
     "радар/Плата развития WEACT.md",
     "UART на linux Mint 21.md",
     "радар/радар K-LD7.md",
     "Hot keys.md",
-    "Images.md",
-    "Images"
+    "Images.md"
   ]
 }
