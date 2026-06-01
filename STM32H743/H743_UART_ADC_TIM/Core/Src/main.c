@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "dac.h"
 #include "dma.h"
 #include "opamp.h"
 #include "tim.h"
@@ -41,6 +42,7 @@
 #define PACKET_PREAMBLE  0x24
 #define PACKET_TERMINATOR 0x0A
 #define PACKET_SIZE 3
+#define DAC_BUFFER_SIZE 256
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -69,7 +71,7 @@ uint8_t rx_index = 0;
 volatile uint8_t packet_ready = 0;
 volatile uint8_t received_data = 0;
 volatile uint8_t received_byte = 0;
-volatile uint8_t synced = 0;  // Флаг �?инхронизации
+volatile uint8_t synced = 0;  // Флаг �?инхронизации
 uint32_t last_byte_time = 0;
 
 typedef enum {
@@ -77,6 +79,16 @@ typedef enum {
     WAIT_DATA,
     WAIT_TERMINATOR
 } UART_State_t;
+
+uint32_t DAC_in;
+uint32_t SawDac;
+float SawAmpVol = 1.5;
+float OffsetVol = 1.0;
+uint32_t SawPeriodMs;    // Период пилы в милли�?екундах
+uint32_t SawAmpDac;
+uint32_t OffsetDac;
+volatile uint16_t dac_buffer[DAC_BUFFER_SIZE];
+
 
 /* USER CODE END PV */
 
@@ -96,10 +108,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if(huart == &huart1)
     {
-    	 // Провер�?ем наличие ошибок
+    	 // Провер�?ем наличие ошибок
     	        if (__HAL_UART_GET_FLAG(huart, UART_FLAG_ORE)) {
     	            __HAL_UART_CLEAR_FLAG(huart, UART_FLAG_ORE);
-    	            // Сбро�? �?о�?то�?ни�? при ошибке переполнени�?
+    	            // Сбро�? �?о�?то�?ни�? при ошибке переполнени�?
     	            uart_state = WAIT_PREAMBLE;
     	            HAL_UART_Receive_IT(&huart1, &received_byte, 1);
     	            return;
@@ -138,12 +150,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 if (received_byte == PACKET_TERMINATOR) {
                     packet_ready = 1;
                 } else {
-//                    // �?еправильный терминатор - отладочный вывод
+//                    // �?еправильный терминатор - отладочный вывод
 //                    char dbg[32];
 //                    sprintf(dbg, "Err: 0x%02X (exp 0x0A)\r\n", received_byte);
 //                    HAL_UART_Transmit(&huart1, (uint8_t*)dbg, strlen(dbg), 100);
                 }
-                uart_state = WAIT_PREAMBLE;  // В�?егда �?бро�?
+                uart_state = WAIT_PREAMBLE;  // В�?егда �?бро�?
                 break;
         }
 
@@ -163,10 +175,13 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 void CheckUARTTimeout(void)
 {
-    if (uart_state != WAIT_PREAMBLE && (HAL_GetTick() - last_byte_time > 100)) {
-        uart_state = WAIT_PREAMBLE;  // Таймаут - �?бро�? �?о�?то�?ни�?
+    if (uart_state != WAIT_PREAMBLE && (HAL_GetTick() - last_byte_time > 50)) {
+        uart_state = WAIT_PREAMBLE;  // Таймаут
     }
 }
+
+void CalculateSawtoothBuffer(void);
+void UpdateSawtooth(float , float , float );
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -207,21 +222,29 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM6_Init();
   MX_OPAMP1_Init();
+  MX_DAC1_Init();
+  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_CALIB_OFFSET_LINEARITY, ADC_SINGLE_ENDED);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_value, 2);
   HAL_TIM_Base_Start(&htim6);
 
-  HAL_OPAMP_Stop(&hopamp1);                    // О�?танавливаем е�?ли был запущен
-  hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;  // У�?танавливаем у�?иление
-  if (HAL_OPAMP_Init(&hopamp1) != HAL_OK)      // Инициализируем �? новыми параметрами
+  HAL_OPAMP_Stop(&hopamp1);                    // О�?танавливаем е�?ли был запущен
+  hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;  // У�?танавливаем у�?иление
+  if (HAL_OPAMP_Init(&hopamp1) != HAL_OK)      // Инициализируем �? новыми параметрами
   {
       Error_Handler();
   }
-  HAL_OPAMP_Start(&hopamp1);                   // Запу�?каем OPAMP
+  HAL_OPAMP_Start(&hopamp1);                   // Запу�?каем OPAMP
   tx_buffer_adc[4] = 0x0A; // Терминатор
   HAL_UART_Receive_IT(&huart1, &received_byte, 1);
 
+  DAC_in = 0;
+  SawDac = 0;
+  CalculateSawtoothBuffer();
+  UpdateSawtooth(3.0,0.0,50);
+  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1,(uint32_t*)dac_buffer,DAC_BUFFER_SIZE,DAC_ALIGN_12B_R);
+  HAL_TIM_Base_Start(&htim7);
 //  HAL_ADCEx_Calibration_Start(&hadc2, ADC_CALIB_OFFSET_LINEARITY, ADC_SINGLE_ENDED);
 
   /* USER CODE END 2 */
@@ -246,9 +269,9 @@ int main(void)
               __enable_irq();
 
               // Упаковываем в 4 байта
-              tx_buffer_adc[0] = (val1 >> 8) & 0xFF;  // �?тарший байт канала 1
+              tx_buffer_adc[0] = (val1 >> 8) & 0xFF;  // тарший байт канала 1
               tx_buffer_adc[1] = val1 & 0xFF;         // младший байт канала 1
-              tx_buffer_adc[2] = (val2 >> 8) & 0xFF;  // �?тарший байт канала 2
+              tx_buffer_adc[2] = (val2 >> 8) & 0xFF;  // тарший байт канала 2
               tx_buffer_adc[3] = val2 & 0xFF;         // младший байт канала 2
 
 
@@ -288,7 +311,7 @@ int main(void)
 		         if (HAL_OPAMP_Init(&hopamp1) != HAL_OK) {
 		             Error_Handler();
 		         }
-		  		 HAL_OPAMP_Start(&hopamp1);                   // Запу�?каем OPAMP
+		  		 HAL_OPAMP_Start(&hopamp1);                   // Запу�?каем OPAMP
 		  	 }
 		  }
 
@@ -362,7 +385,61 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void CalculateSawtoothBuffer(void)
+{
+    for (int i = 0; i < DAC_BUFFER_SIZE; i++) {
+        // Линейное нара�?тание от 0 до SawAmpDac
+        uint32_t value = (i * SawAmpDac) / (DAC_BUFFER_SIZE - 1);
+        value += OffsetDac;
 
+        // Ограничение
+        if (value > 4095) value = 4095;
+        if (value < 0) value = 0;
+
+        dac_buffer[i] = (uint16_t)value;
+    }
+}
+
+// Функци�? обновлени�? параметров пилы
+void UpdateSawtooth(float amplitude_volts, float offset_volts, float period_ms)
+{
+    // Конвертаци�? вольт в коды DAC (Vref = 3.3V)
+    SawAmpDac = (uint32_t)(amplitude_volts * 4095.0f / 3.3f);
+    OffsetDac = (uint32_t)(offset_volts * 4095.0f / 3.3f);
+    SawPeriodMs = (uint32_t)period_ms;
+
+
+
+    // Пере�?читать ча�?тоту таймера
+    // Ча�?тота DAC обновлени�? = DAC_BUFFER_SIZE / (period_ms / 1000)
+    uint32_t dac_freq_hz = (DAC_BUFFER_SIZE * 1000) / SawPeriodMs;
+
+    // �?а�?тройка таймера (TIM7) дл�? нужной ча�?тоты
+    // При APB1 = 100 МГц
+    uint32_t timer_clock = 100000000;  // 100 МГц
+    uint32_t prescaler = 0;
+    uint32_t period = 0;
+
+    // Подбор делителей
+    uint32_t total_divider = timer_clock / dac_freq_hz;
+
+    // Е�?ли делитель небольшой, то prescaler = 0
+    if (total_divider <= 65536) {
+        prescaler = 0;
+        period = total_divider - 1;
+    }
+    // Е�?ли делитель больше 65536, нужно и�?пользовать prescaler
+    else {
+        // Ищем prescaler такой, чтобы period не превышал 65535
+        prescaler = total_divider / 65536;
+        period = (total_divider / (prescaler + 1)) - 1;
+    }
+    __HAL_TIM_SET_PRESCALER(&htim7, prescaler);
+    __HAL_TIM_SET_AUTORELOAD(&htim7, period);
+
+    // Пере�?читать буфер
+    CalculateSawtoothBuffer();
+}
 /* USER CODE END 4 */
 
 /**
