@@ -9,19 +9,23 @@ from scipy import signal
 import time
 
 # Константы
-GRAPH_LENGTH_POINTS = 1000
-UPDATE_INTERVAL_MS = 200
+GRAPH_LENGTH_POINTS = 1000 # кол-во точек 
+UPDATE_INTERVAL_MS = 1000  # интервал обновления графика 
 MAX_PENDING = 100
 
 # Параметры фильтра
-CUTOFF_FREQ = 200
-SAMPLING_RATE = 10000
+CUTOFF_FREQ = 200   # частота среза 
+SAMPLING_RATE = 10000 # частота дискретизации
 
 buffer = bytearray()
-listX = np.arange(GRAPH_LENGTH_POINTS, dtype=np.int32)  # int для X (индексы)
+# listX = np.arange(GRAPH_LENGTH_POINTS, dtype=np.int32)  # int для X (индексы)
+listX = np.linspace(0.0, (GRAPH_LENGTH_POINTS*0.1) - 0.1, GRAPH_LENGTH_POINTS, dtype=np.float32)
 listY_raw = np.zeros(GRAPH_LENGTH_POINTS, dtype=np.int32)  # int для АЦП
 listY_filtered = np.zeros(GRAPH_LENGTH_POINTS, dtype=np.float64)  # float ТОЛЬКО для фильтра
 listY2 = np.zeros(GRAPH_LENGTH_POINTS, dtype=np.int32)  # int для второго канала
+
+listY_filtered_for_test = []
+
 
 pending_data_raw = []  # Храним как int
 pending_data2 = []     # Храним как int
@@ -73,8 +77,8 @@ if __name__ == '__main__':
     # НАСТРОЙКА НИЖНЕГО ГРАФИКА (graph2) - оба сигнала
     ui.graph2.setBackground("w")
     ui.graph2.showGrid(x=True, y=True)
-    ui.graph2.setLabel('left', 'Сигналы', units='ADC')
-    ui.graph2.setLabel('bottom', 'Отсчеты')
+    ui.graph2.setLabel('left', 'Сигналы')
+    ui.graph2.setLabel('bottom', 'ms')
     ui.graph2.setTitle('Сравнение сигналов: СИНИЙ - фильтрованный, КРАСНЫЙ - сырой')
     
     # Линия для ФИЛЬТРОВАННОГО сигнала (синяя) - float значения
@@ -89,10 +93,31 @@ if __name__ == '__main__':
     ui.graph.setBackground("w")
     pen2 = pg.mkPen(color=(0, 255, 0), width=2)
     ui.graph.showGrid(x=True, y=True)
-    ui.graph.setLabel('left', 'Канал 2', units='ADC')
-    ui.graph.setLabel('bottom', 'Отсчеты')
+    ui.graph.setLabel('left', 'Канал 2')
+    ui.graph.setLabel('bottom', 'ms')
     ui.graph.setTitle('Второй канал (без фильтра)')
     curve2 = ui.graph.plot(listX, listY2, pen=pen2)
+
+     # НАСТРОЙКА  ГРАФИКА 3 (test) - второй канал
+    pen3 = pg.mkPen(color=(255, 0, 0), width=2)
+    ui.graphTest.setBackground("w")
+    ui.graphTest.showGrid(x=True, y=True)
+    ui.graphTest.setLabel('left', 'Канал 2')
+    ui.graphTest.setLabel('bottom', 'ms')
+    ui.graphTest.setTitle('тестовые данные')
+    curve3_raw = ui.graphTest.plot(listX, listY_filtered_for_test, pen=pen_raw)
+    curve3_filtered = ui.graphTest.plot(listX, listY_filtered_for_test, pen=pen3)
+
+    # НАСТРОЙКА  ГРАФИКА 4 (test) - второй канал
+    pen4 = pg.mkPen(color=(255, 0, 0), width=2)
+    ui.widget.setBackground("w")
+    ui.widget.showGrid(x=True, y=True)
+    ui.widget.setLabel('left', 'Канал 2')
+    ui.widget.setLabel('bottom', 'ms')
+    ui.widget.setTitle('цифровой компаратор')
+    curve4 = ui.widget.plot(listX, listY_filtered_for_test, pen=pen4)
+
+
     
     # Для отладки
     update_count = 0
@@ -174,6 +199,8 @@ if __name__ == '__main__':
                         # Читаем как int (без преобразования в float)
                         adc_1 = (packet[0] << 8) | packet[1]
                         adc_2 = (packet[2] << 8) | packet[3]
+
+                        
                         
                         # Сохраняем как int
                         pending_data_raw.append(adc_1)
@@ -252,15 +279,127 @@ if __name__ == '__main__':
         serial.write(tx_send_buf)
         print(f"Отправлено: {tx_send_buf.hex().upper()}")
 
+    def UpdateIntervalChange(val):
+        global UPDATE_INTERVAL_MS,graph_timer
+        UPDATE_INTERVAL_MS = val * 100
+        if graph_timer is not None:
+                graph_timer.stop()           # Останавливаем
+                graph_timer.start(UPDATE_INTERVAL_MS)  # Запускаем с новым интервалом
     
+    def UpdatePortList():
+        global portList
+        portList = []
+        ui.ComList.clear()
+        portList = [port.portName() for port in QSerialPortInfo().availablePorts()]    
+        ui.ComList.addItems(portList)
 
+    def TestBtn():
+        global listY_filtered_for_test
+        listY_filtered_for_test = listY_filtered
+        curve3_raw.setData(listX, listY_filtered_for_test)
+
+        listY_fil = exponential_filter(listY_filtered_for_test,0.02)
+        listY_fil = moving_average_filter(listY_fil, 100)
+
+        shift = 100 // 2  # 25 (int)
+
+        # Сдвиг в ПРОТИВОПОЛОЖНУЮ сторону (меняем знак)
+        # Было: -shift (влево)
+        # Стало: +shift (вправо)
+        listY_fil_shifted = np.roll(listY_fil, shift)  # Убрали минус
+
+        # Заполняем начало, а не конец
+        listY_fil_shifted[:shift] = listY_fil_shifted[shift]  # или listY_fil_shifted[shift+1]
+
+        curve3_filtered.setData(listX[100:], listY_fil_shifted[100:])
+
+        comp, F1, F2 = frequency_detection(listY_filtered_for_test, listY_fil)
+        curve4.setData(listX, comp)
+        ui.lcdF1.display(F1)
+        ui.lcdF2.display(F2)
+
+
+    def exponential_filter(signal, k=0.08):
+       
+        signal = np.asarray(signal)
+        n = len(signal)
+        filVal = np.zeros(n, dtype=np.float64)
+
+        # Первое значение равно первому отсчёту сигнала
+        filVal[0] = signal[0]
+
+        # Основной цикл
+        for i in range(1, n):
+            filVal[i] = signal[i] * k + filVal[i-1] * (1 - k)
+
+        return filVal
+
+    def moving_average_filter(signal, window_size=150):
+        signal = np.asarray(signal)
+        n = len(signal)
+        aaf_sig = np.zeros(n, dtype=np.float64)
+
+        for i in range(window_size, n):
+            # Суммируем window_size предыдущих значений
+            for j in range(window_size):
+                aaf_sig[i] += signal[i - j]
+
+            # Делим на размер окна
+            aaf_sig[i] /= window_size
+
+            # Дублируем значение в начало окна (как в MATLAB)
+            aaf_sig[i - window_size + 1] = aaf_sig[i]
+
+        return aaf_sig        
     
+    def frequency_detection(signal, filtered_signal, threshold=None, time_span=0.05):
+        signal = np.asarray(signal)
+
+        if threshold is None:
+            threshold = np.asarray(filtered_signal)
+        elif isinstance(threshold, (int, float)):
+            threshold = np.full_like(signal, threshold)
+
+        n = len(signal)
+        comp = np.zeros(n, dtype=np.int8)
+
+        flag = 0
+        count = 0
+        count_one_period = 0
+
+        for i in range(n):
+            if signal[i] > threshold[i]:
+                comp[i] = 1
+                if flag == 0:
+                    count += 1
+                    if i < 500:  # Первые 500 отсчётов
+                        count_one_period = count
+                        count_one_period = count_one_period - 1
+                flag = 1
+            else:
+                comp[i] = 0
+                flag = 0
+
+        # Расчёт частоты
+        # Предполагается, что time_span = длительность сигнала (в секундах)
+        # count_one_period - количество переходов за первый период (~50 мс)
+        # count - количество переходов за всю длительность (4*0.05 = 0.2 сек)
+
+        F_found = count_one_period / time_span if time_span > 0 else 0
+        F_found2 = count / (2 * time_span) if time_span > 0 else 0
+
+        return comp, F_found, F_found2
     # Подключение сигналов
     serial.readyRead.connect(OnRead)
     ui.openBtn.clicked.connect(OnOpen)
     ui.closeBtn.clicked.connect(OnClose)
+    ui.updatePortList.clicked.connect(UpdatePortList)
+    ui.testBtn.clicked.connect(TestBtn)
     ui.LED_btn.clicked.connect(LED_toggle)
     ui.OpAmpSlider.valueChanged.connect(OpAmp_cnahge)
+    ui.graphUpdateSlider.valueChanged.connect(UpdateIntervalChange)
+
+    
 
 
     ui.gaph2_on.clicked.connect(OnPlot2)
