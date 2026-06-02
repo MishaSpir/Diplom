@@ -7,11 +7,14 @@ import pyqtgraph as pg
 import numpy as np
 from scipy import signal
 import time
+from scipy.ndimage import uniform_filter1d
+from scipy.fft import fft, fftfreq
 
 # Константы
 GRAPH_LENGTH_POINTS = 1000 # кол-во точек 
 UPDATE_INTERVAL_MS = 1000  # интервал обновления графика 
 MAX_PENDING = 100
+kexp = 0.01
 
 # Параметры фильтра
 CUTOFF_FREQ = 200   # частота среза 
@@ -109,13 +112,15 @@ if __name__ == '__main__':
     curve3_filtered = ui.graphTest.plot(listX, listY_filtered_for_test, pen=pen3)
 
     # НАСТРОЙКА  ГРАФИКА 4 (test) - второй канал
-    pen4 = pg.mkPen(color=(255, 0, 0), width=2)
+    pen4 = pg.mkPen(color=(0, 0, 0), width=2)
     ui.widget.setBackground("w")
     ui.widget.showGrid(x=True, y=True)
     ui.widget.setLabel('left', 'Канал 2')
     ui.widget.setLabel('bottom', 'ms')
     ui.widget.setTitle('цифровой компаратор')
-    curve4 = ui.widget.plot(listX, listY_filtered_for_test, pen=pen4)
+    curve4 = ui.widget.plot(listX, listY_filtered_for_test, pen=pen4, symbol="+",
+    symbolSize=20,
+    symbolBrush="b")
 
 
     
@@ -294,30 +299,42 @@ if __name__ == '__main__':
         ui.ComList.addItems(portList)
 
     def TestBtn():
-        global listY_filtered_for_test
+        global listY_filtered_for_test, kexp
         listY_filtered_for_test = listY_filtered
         curve3_raw.setData(listX, listY_filtered_for_test)
+        
+        listY_fil = exponential_filter(listY_filtered_for_test,kexp) -100
+        # listY_fil = moving_average_filter(listY_fil, 100)
 
-        listY_fil = exponential_filter(listY_filtered_for_test,0.02)
-        listY_fil = moving_average_filter(listY_fil, 100)
-
-        shift = 100 // 2  # 25 (int)
+        # shift = 100 // 2  # 25 (int)
 
         # Сдвиг в ПРОТИВОПОЛОЖНУЮ сторону (меняем знак)
         # Было: -shift (влево)
         # Стало: +shift (вправо)
-        listY_fil_shifted = np.roll(listY_fil, shift)  # Убрали минус
+        # listY_fil_shifted = np.roll(listY_fil, shift)  # Убрали минус
 
         # Заполняем начало, а не конец
-        listY_fil_shifted[:shift] = listY_fil_shifted[shift]  # или listY_fil_shifted[shift+1]
+        # listY_fil_shifted[:shift] = listY_fil_shifted[shift]  # или listY_fil_shifted[shift+1]
 
-        curve3_filtered.setData(listX[100:], listY_fil_shifted[100:])
+        # curve3_filtered.setData(listX[100:], listY_fil_shifted[100:])
+        curve3_filtered.setData(listX,listY_fil)
 
-        comp, F1, F2 = frequency_detection(listY_filtered_for_test, listY_fil)
-        curve4.setData(listX, comp)
+        # comp, F1, F2 = frequency_detection(listY_filtered_for_test, listY_fil)
+        F1  = frequency_detection_simple(listY_filtered_for_test,listY_fil)
+        # curve4.setData(listX, comp)
         ui.lcdF1.display(F1)
-        ui.lcdF2.display(F2)
-
+        if(F1<60):
+            kexp = 0.01
+        elif(F1>60 and F1<120):
+            kexp = 0.02
+        else:
+            kexp = 0.025
+        fs = 10000  # частота дискретизации
+        # freq_fft, freqs, mags = frequency_detection_fft(listY_fil, fs)
+        f,m = frequency_detection_fft_peaks(listY_filtered_for_test,fs,3)
+        ui.lcdF2.display(kexp)
+        # print(freqs)
+        curve4.setData(f, m)
 
     def exponential_filter(signal, k=0.08):
        
@@ -388,7 +405,82 @@ if __name__ == '__main__':
         F_found = count_one_period / time_span if time_span > 0 else 0
         F_found2 = count / (2 * time_span) if time_span > 0 else 0
 
-        return comp, F_found, F_found2
+        return comp, F_found, count_one_period
+    
+    def frequency_detection_simple(signal, threshold, fs=10000):
+        """
+        Простая версия определения частоты по пересечениям
+
+        Возвращает частоту по количеству пересечений
+        """
+        signal = np.asarray(signal)
+        threshold = np.asarray(threshold)
+
+        # Находим пересечения
+        crossings = []
+        for i in range(len(signal) - 1):
+            if (signal[i] > threshold[i] and signal[i+1] <= threshold[i+1]) or \
+               (signal[i] < threshold[i] and signal[i+1] >= threshold[i+1]):
+                crossings.append(i)
+
+        if len(crossings) < 3:
+            return 0
+
+        # Переводим в секунды
+        crossings_time = np.array(crossings) / fs
+
+        # Берем только установившийся режим (пропускаем первые 20%)
+        start_idx = len(crossings_time) // 5
+        stable_crossings = crossings_time[start_idx:-1]
+
+        if len(stable_crossings) < 2:
+            return 0
+
+        # Расчёт частоты
+        total_time = stable_crossings[-1] - stable_crossings[0]
+        frequency = (len(stable_crossings) - 1) / (2 * total_time)
+
+        return frequency
+    
+    def frequency_detection_fft_peaks(signal, fs=10000, n_peaks=20):
+        """
+        Определение нескольких частот через БПФ (всегда возвращает n_peaks значений)
+
+        Возвращает:
+        - frequencies: массив частот пиков (всегда длины n_peaks)
+        - magnitudes: массив амплитуд пиков (всегда длины n_peaks)
+        """
+        signal = np.asarray(signal)
+        signal = signal - np.mean(signal)
+
+        n = len(signal)
+        yf = fft(signal)
+        frequencies = fftfreq(n, 1/fs)
+
+        # Берём положительные частоты
+        positive_idx = frequencies > 0
+        freqs = frequencies[positive_idx]
+        mags = np.abs(yf[positive_idx])
+
+        # Ищем пики
+        from scipy.signal import find_peaks
+        peaks, properties = find_peaks(mags, height=np.max(mags) * 0.1, distance=5)
+
+        # Инициализируем результаты нулями
+        result_freqs = np.zeros(n_peaks)
+        result_mags = np.zeros(n_peaks)
+
+        if len(peaks) > 0:
+            # Сортируем по амплитуде
+            peak_heights = properties['peak_heights']
+            sorted_idx = np.argsort(peak_heights)[::-1]
+
+            # Берём до n_peaks пиков
+            n_peaks_actual = min(n_peaks, len(sorted_idx))
+            result_freqs[:n_peaks_actual] = freqs[peaks[sorted_idx[:n_peaks_actual]]]
+            result_mags[:n_peaks_actual] = peak_heights[sorted_idx[:n_peaks_actual]]
+
+        return result_freqs, result_mags
     # Подключение сигналов
     serial.readyRead.connect(OnRead)
     ui.openBtn.clicked.connect(OnOpen)

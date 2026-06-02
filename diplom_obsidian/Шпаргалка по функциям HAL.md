@@ -1,3 +1,7 @@
+
+https://www.youtube.com/watch?v=P-2-1WaP8RU - копирование проекта в CubeIDE
+
+https://www.youtube.com/watch?v=OUZanzaCxfg&list=PLu7VPnJ3pk-4uVsHHS8QGkZPlfuuqa49u&index=4 - решение блокировки 
 # GPIO
 
 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 0);
