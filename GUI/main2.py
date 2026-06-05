@@ -15,6 +15,7 @@ GRAPH_LENGTH_POINTS = 1000 # кол-во точек
 UPDATE_INTERVAL_MS = 1000  # интервал обновления графика 
 MAX_PENDING = 100
 kexp = 0.01
+avrg = 25
 
 # Параметры фильтра
 CUTOFF_FREQ = 200   # частота среза 
@@ -34,6 +35,8 @@ pending_data_raw = []  # Храним как int
 pending_data2 = []     # Храним как int
 
 graph_timer = None
+distance_timer = None
+DISTANCE_UPDATE_INTERVAL = 500
 
 OnPlot2_flag = False
 OnPlot2Filter_flag = False
@@ -118,9 +121,11 @@ if __name__ == '__main__':
     ui.widget.setLabel('left', 'Канал 2')
     ui.widget.setLabel('bottom', 'ms')
     ui.widget.setTitle('цифровой компаратор')
-    curve4 = ui.widget.plot(listX, listY_filtered_for_test, pen=pen4, symbol="+",
-    symbolSize=20,
-    symbolBrush="b")
+    curve4 = ui.widget.plot(listX, listY_filtered_for_test, pen=pen4, 
+    # symbol="+",
+    # symbolSize=20,
+    # symbolBrush="b"
+    )
 
 
     
@@ -219,7 +224,7 @@ if __name__ == '__main__':
                 buffer = buffer[-5000:]
     
     def OnOpen():
-        global graph_timer, filter_state
+        global graph_timer,distance_timer, filter_state
         
         gui_port_name = ui.ComList.currentText()
         if not gui_port_name:
@@ -240,16 +245,26 @@ if __name__ == '__main__':
                 graph_timer = QTimer()
                 graph_timer.timeout.connect(update_graph)
                 graph_timer.start(UPDATE_INTERVAL_MS)
-                print(f"Таймер запущен, интервал {UPDATE_INTERVAL_MS} мс")
+                print(f"Таймер 1 запущен, интервал {UPDATE_INTERVAL_MS} мс")
+
+            if distance_timer is None:
+                distance_timer = QTimer()
+                distance_timer.timeout.connect(TestBtn)
+                distance_timer.start(DISTANCE_UPDATE_INTERVAL)
+                print(f"Таймер 2 запущен, интервал {DISTANCE_UPDATE_INTERVAL} мс")    
         else:
             print("Can't open the port")
     
     def OnClose():
-        global graph_timer
+        global graph_timer,distance_timer
         
         if graph_timer:
             graph_timer.stop()
             graph_timer = None
+
+        if distance_timer:
+            distance_timer.stop()
+            distance_timer = None    
         serial.close()
         print("Port closed")
 
@@ -298,12 +313,14 @@ if __name__ == '__main__':
         portList = [port.portName() for port in QSerialPortInfo().availablePorts()]    
         ui.ComList.addItems(portList)
 
+
     def TestBtn():
-        global listY_filtered_for_test, kexp
+        global listY_filtered_for_test, kexp,avrg
         listY_filtered_for_test = listY_filtered
         curve3_raw.setData(listX, listY_filtered_for_test)
         
-        listY_fil = exponential_filter(listY_filtered_for_test,kexp) -100
+        listY_fil = exponential_filter(listY_filtered_for_test,kexp) 
+        # listY_fil = moving_average_filter(listY_fil,avrg)
         # listY_fil = moving_average_filter(listY_fil, 100)
 
         # shift = 100 // 2  # 25 (int)
@@ -316,25 +333,35 @@ if __name__ == '__main__':
         # Заполняем начало, а не конец
         # listY_fil_shifted[:shift] = listY_fil_shifted[shift]  # или listY_fil_shifted[shift+1]
 
-        # curve3_filtered.setData(listX[100:], listY_fil_shifted[100:])
-        curve3_filtered.setData(listX,listY_fil)
+        # curve3_filtered.setData(listX[100:], listY_fil[100:])
+        shift = 30
+        listY_fil_shifted = listY_fil[shift:]  # Удаляем первые 10 элементов
 
-        # comp, F1, F2 = frequency_detection(listY_filtered_for_test, listY_fil)
-        F1  = frequency_detection_simple(listY_filtered_for_test,listY_fil)
-        # curve4.setData(listX, comp)
+        # Если нужно сохранить длину массива, добавляем нули в конец
+        listY_fil_shifted = np.append(listY_fil[shift:], np.zeros(shift))
+        curve3_filtered.setData(listX[:len(listY_fil_shifted)-shift],listY_fil_shifted[:len(listY_fil_shifted)-shift])
+        
+
+        comp, F1, F2 = frequency_detection(listY_filtered_for_test, listY_fil_shifted)
+        F1  = frequency_detection_simple(listY_filtered_for_test,listY_fil_shifted)
+        curve4.setData(listX, comp)
         ui.lcdF1.display(F1)
-        if(F1<60):
+        if(F1<40):
             kexp = 0.01
-        elif(F1>60 and F1<120):
+            # subexp = (-150)
+        elif(F1>40 and F1<120):
             kexp = 0.02
+            subexp = 50
         else:
             kexp = 0.025
+            subexp = 100
+            avrg = 2
         fs = 10000  # частота дискретизации
         # freq_fft, freqs, mags = frequency_detection_fft(listY_fil, fs)
         f,m = frequency_detection_fft_peaks(listY_filtered_for_test,fs,3)
         ui.lcdF2.display(kexp)
         # print(freqs)
-        curve4.setData(f, m)
+        # curve4.setData(f, m)
 
     def exponential_filter(signal, k=0.08):
        
