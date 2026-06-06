@@ -12,7 +12,7 @@ from scipy.fft import fft, fftfreq
 
 # Константы
 GRAPH_LENGTH_POINTS = 1000 # кол-во точек 
-UPDATE_INTERVAL_MS = 1000  # интервал обновления графика 
+UPDATE_INTERVAL_MS = 100  # интервал обновления графика 
 MAX_PENDING = 100
 kexp = 0.01
 avrg = 25
@@ -26,6 +26,7 @@ buffer = bytearray()
 listX = np.linspace(0.0, (GRAPH_LENGTH_POINTS*0.1) - 0.1, GRAPH_LENGTH_POINTS, dtype=np.float32)
 listY_raw = np.zeros(GRAPH_LENGTH_POINTS, dtype=np.int32)  # int для АЦП
 listY_filtered = np.zeros(GRAPH_LENGTH_POINTS, dtype=np.float64)  # float ТОЛЬКО для фильтра
+listY2_filtered = np.zeros(GRAPH_LENGTH_POINTS, dtype=np.float64)  # float ТОЛЬКО для фильтра
 listY2 = np.zeros(GRAPH_LENGTH_POINTS, dtype=np.int32)  # int для второго канала
 
 listY_filtered_for_test = []
@@ -38,8 +39,12 @@ graph_timer = None
 distance_timer = None
 DISTANCE_UPDATE_INTERVAL = 500
 
+OnPlot1_flag = False
 OnPlot2_flag = False
+OnPlot1Filter_flag = False
 OnPlot2Filter_flag = False
+distance_channel = False
+
 
 led_state = 0
 
@@ -70,7 +75,7 @@ def apply_lowpass_filter(data_point):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    ui = uic.loadUi("design_main2.ui")
+    ui = uic.loadUi("design_main2_tabs.ui")
     ui.setWindowTitle("Serial GUI")
     
     # Настройка порта
@@ -103,8 +108,9 @@ if __name__ == '__main__':
     ui.graph.setLabel('bottom', 'ms')
     ui.graph.setTitle('Второй канал (без фильтра)')
     curve2 = ui.graph.plot(listX, listY2, pen=pen2)
+    curve2_filtered = ui.graph.plot(listX, listY2_filtered, pen=pen_filtered)
 
-     # НАСТРОЙКА  ГРАФИКА 3 (test) - второй канал
+     # НАСТРОЙКА  ГРАФИКА 3 (test) 
     pen3 = pg.mkPen(color=(255, 0, 0), width=2)
     ui.graphTest.setBackground("w")
     ui.graphTest.showGrid(x=True, y=True)
@@ -135,7 +141,7 @@ if __name__ == '__main__':
     
     def update_graph():
         """Обновление графиков"""
-        global pending_data_raw, pending_data2, listY_raw, listY_filtered, listY2
+        global pending_data_raw, pending_data2, listY_raw, listY_filtered,listY2_filtered, listY2
         global update_count, last_time, filter_state
         
         has_data = False
@@ -163,14 +169,27 @@ if __name__ == '__main__':
             pending_data_raw = []
             has_data = True
      
-        # Обработка второго канала (без фильтра) - int
+        # Обработка второго канала
         if pending_data2:
             n_new = len(pending_data2)
+
+             # Применяем фильтр к каждому новому значению
+            filtered_values = []
+            for value in pending_data2:
+                filtered_val = apply_lowpass_filter(value)  # value уже int
+                filtered_values.append(filtered_val)
+            
             if n_new >= GRAPH_LENGTH_POINTS:
-                listY2 = np.array(pending_data2[-GRAPH_LENGTH_POINTS:], dtype=np.int32)
+                listY2 = np.array(pending_data2[-GRAPH_LENGTH_POINTS:], dtype=np.int32)                
+                listY2_filtered = np.array(filtered_values[-GRAPH_LENGTH_POINTS:], dtype=np.float64)
+                mean_value = np.mean(listY2_filtered)
+                listY2_filtered = 2 * mean_value - listY2_filtered
             else:
                 listY2 = np.roll(listY2, -n_new)
                 listY2[-n_new:] = pending_data2
+                listY2_filtered = np.roll(listY2_filtered, -n_new)
+                listY2_filtered[-n_new:] = filtered_values
+            
             pending_data2 = []
             has_data = True
         
@@ -184,7 +203,15 @@ if __name__ == '__main__':
                 curve_filtered.setData(listX, listY_filtered)    
             else:
                 curve_filtered.setData([], [])
-            curve2.setData(listX, listY2)
+            
+            if(OnPlot1_flag):
+                curve2.setData(listX, listY2)
+            else:
+                curve2.setData([],[])
+            if(OnPlot1Filter_flag):
+                curve2_filtered.setData(listX, listY2_filtered)    
+            else:
+                curve2_filtered.setData([], [])    
             
             update_count += 1
             if time.time() - last_time >= 1.0:
@@ -272,9 +299,17 @@ if __name__ == '__main__':
         global OnPlot2_flag
         OnPlot2_flag = not OnPlot2_flag
 
+    def OnPlot1():
+        global OnPlot1_flag
+        OnPlot1_flag = not OnPlot1_flag    
+
     def OnPlot2Filter():
         global OnPlot2Filter_flag
-        OnPlot2Filter_flag = not OnPlot2Filter_flag    
+        OnPlot2Filter_flag = not OnPlot2Filter_flag  
+
+    def OnPlot1Filter():
+        global OnPlot1Filter_flag
+        OnPlot1Filter_flag = not OnPlot1Filter_flag 
 
     def LED_toggle(val):
         if val:
@@ -313,10 +348,20 @@ if __name__ == '__main__':
         portList = [port.portName() for port in QSerialPortInfo().availablePorts()]    
         ui.ComList.addItems(portList)
 
+    def changeChannel():
+        global distance_channel
+        distance_channel = not distance_channel   
+
 
     def TestBtn():
         global listY_filtered_for_test, kexp,avrg
-        listY_filtered_for_test = listY_filtered
+        if(distance_channel):
+            listY_filtered_for_test = listY_filtered
+            ui.chan_label.setText("Channel 2")
+            
+        else:
+            listY_filtered_for_test = listY2_filtered
+            ui.chan_label.setText("Channel 1")
         curve3_raw.setData(listX, listY_filtered_for_test)
         
         listY_fil = exponential_filter(listY_filtered_for_test,kexp) 
@@ -515,6 +560,7 @@ if __name__ == '__main__':
     ui.updatePortList.clicked.connect(UpdatePortList)
     ui.testBtn.clicked.connect(TestBtn)
     ui.LED_btn.clicked.connect(LED_toggle)
+    ui.changeChannel.clicked.connect(changeChannel)
     ui.OpAmpSlider.valueChanged.connect(OpAmp_cnahge)
     ui.graphUpdateSlider.valueChanged.connect(UpdateIntervalChange)
 
@@ -522,7 +568,9 @@ if __name__ == '__main__':
 
 
     ui.gaph2_on.clicked.connect(OnPlot2)
+    ui.gaph1_on.clicked.connect(OnPlot1)
     ui.graph2_filter_on.clicked.connect(OnPlot2Filter) 
+    ui.graph1_filter_on.clicked.connect(OnPlot1Filter)
     
     ui.show()
     sys.exit(app.exec_())

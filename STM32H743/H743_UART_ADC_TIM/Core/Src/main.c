@@ -84,7 +84,7 @@ uint32_t DAC_in;
 uint32_t SawDac;
 float SawAmpVol = 1.5;
 float OffsetVol = 1.0;
-uint32_t SawPeriodMs;    // Период пилы в милли�?екундах
+uint32_t SawPeriodMs;    // Период пилы в милли�?екундах
 uint32_t SawAmpDac;
 uint32_t OffsetDac;
 volatile uint16_t dac_buffer[DAC_BUFFER_SIZE];
@@ -224,6 +224,7 @@ int main(void)
   MX_OPAMP1_Init();
   MX_DAC1_Init();
   MX_TIM7_Init();
+  MX_OPAMP2_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_CALIB_OFFSET_LINEARITY, ADC_SINGLE_ENDED);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_value, 2);
@@ -236,6 +237,15 @@ int main(void)
       Error_Handler();
   }
   HAL_OPAMP_Start(&hopamp1);                   // Запу�?каем OPAMP
+
+//------------------------------------------------------------------
+  HAL_OPAMP_Stop(&hopamp2);                    // О�?танавливаем е�?ли был запущен
+  hopamp2.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;  // У�?танавливаем у�?иление
+  if (HAL_OPAMP_Init(&hopamp2) != HAL_OK)      // Инициализируем �? новыми параметрами
+  {
+      Error_Handler();
+  }
+  HAL_OPAMP_Start(&hopamp2);                   // Запу�?каем OPAMP
   tx_buffer_adc[4] = 0x0A; // Терминатор
   HAL_UART_Receive_IT(&huart1, &received_byte, 1);
 
@@ -292,26 +302,46 @@ int main(void)
 		  	 }
 		  	 if(received_data > 0x01){
 		  		 switch (received_data){
-		  		 	 case 0x02:  HAL_OPAMP_Stop(&hopamp1);
-		  		 	 	 	 	 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_2_OR_MINUS_1;
-		  		 	 	 	 	 break;
-		  		 	 case 0x04:  HAL_OPAMP_Stop(&hopamp1);
-		  		 	 	 	 	 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_4_OR_MINUS_3;
-		  		 	 	 	 	 break;
-		  		 	 case 0x08:  HAL_OPAMP_Stop(&hopamp1);
-		  		 	 	 	 	 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_8_OR_MINUS_7;
-		  		 	 	 	 	 break;
-		  		 	 case 0x10:  HAL_OPAMP_Stop(&hopamp1);
-		  		 	 	 	 	 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
-		  		 	 	 	 	 break;
-		  		 	 default:	 HAL_OPAMP_Stop(&hopamp1);
-		  		 	 	 	 	 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
-		  		 	 	 	 	 break;
+		  		 	 case 0x02:
+		  		 		 HAL_OPAMP_Stop(&hopamp1);
+		  		 		 HAL_OPAMP_Stop(&hopamp2);
+		  		 		 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_2_OR_MINUS_1;
+		  		 		 hopamp2.Init.PgaGain = OPAMP_PGA_GAIN_2_OR_MINUS_1;
+		  		 		 break;
+		  		 	 case 0x04:
+		  		 		 HAL_OPAMP_Stop(&hopamp1);
+		  		 		 HAL_OPAMP_Stop(&hopamp2);
+		  		 		 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_4_OR_MINUS_3;
+		  		 		 hopamp2.Init.PgaGain = OPAMP_PGA_GAIN_4_OR_MINUS_3;
+
+		  		 		 break;
+		  		 	 case 0x08:
+		  		 		 HAL_OPAMP_Stop(&hopamp1);
+		  		 		 HAL_OPAMP_Stop(&hopamp2);
+		  		 		 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_8_OR_MINUS_7;
+		  		 		 hopamp2.Init.PgaGain = OPAMP_PGA_GAIN_8_OR_MINUS_7;
+		  		 		 break;
+		  		 	 case 0x10:
+		  		 		 HAL_OPAMP_Stop(&hopamp1);
+		  		 		 HAL_OPAMP_Stop(&hopamp2);
+		  		 		 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
+		  		 		 hopamp2.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
+		  		 		 break;
+		  		 	 default:
+		  		 		 HAL_OPAMP_Stop(&hopamp1);
+		  		 		 HAL_OPAMP_Stop(&hopamp1);
+		  		 		 hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
+		  		 		 hopamp2.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;
+		  		 		 break;
 		  		 }
 		         if (HAL_OPAMP_Init(&hopamp1) != HAL_OK) {
 		             Error_Handler();
 		         }
+		         if (HAL_OPAMP_Init(&hopamp2) != HAL_OK) {
+		             Error_Handler();
+		         }
 		  		 HAL_OPAMP_Start(&hopamp1);                   // Запу�?каем OPAMP
+		  		 HAL_OPAMP_Start(&hopamp2);
 		  	 }
 		  }
 
@@ -400,21 +430,21 @@ void CalculateSawtoothBuffer(void)
     }
 }
 
-// Функци�? обновлени�? параметров пилы
+// Функци�? обновлени�? параметров пилы
 void UpdateSawtooth(float amplitude_volts, float offset_volts, float period_ms)
 {
-    // Конвертаци�? вольт в коды DAC (Vref = 3.3V)
+    // Конвертаци�? вольт в коды DAC (Vref = 3.3V)
     SawAmpDac = (uint32_t)(amplitude_volts * 4095.0f / 3.3f);
     OffsetDac = (uint32_t)(offset_volts * 4095.0f / 3.3f);
     SawPeriodMs = (uint32_t)period_ms;
 
 
 
-    // Пере�?читать ча�?тоту таймера
-    // Ча�?тота DAC обновлени�? = DAC_BUFFER_SIZE / (period_ms / 1000)
+    // Пере�?читать ча�?тоту таймера
+    // Ча�?тота DAC обновлени�? = DAC_BUFFER_SIZE / (period_ms / 1000)
     uint32_t dac_freq_hz = (DAC_BUFFER_SIZE * 1000) / SawPeriodMs;
 
-    // �?а�?тройка таймера (TIM7) дл�? нужной ча�?тоты
+    // �?а�?тройка таймера (TIM7) дл�? нужной ча�?тоты
     // При APB1 = 100 МГц
     uint32_t timer_clock = 100000000;  // 100 МГц
     uint32_t prescaler = 0;
@@ -423,12 +453,12 @@ void UpdateSawtooth(float amplitude_volts, float offset_volts, float period_ms)
     // Подбор делителей
     uint32_t total_divider = timer_clock / dac_freq_hz;
 
-    // Е�?ли делитель небольшой, то prescaler = 0
+    // Е�?ли делитель небольшой, то prescaler = 0
     if (total_divider <= 65536) {
         prescaler = 0;
         period = total_divider - 1;
     }
-    // Е�?ли делитель больше 65536, нужно и�?пользовать prescaler
+    // Е�?ли делитель больше 65536, нужно и�?пользовать prescaler
     else {
         // Ищем prescaler такой, чтобы period не превышал 65535
         prescaler = total_divider / 65536;
@@ -437,7 +467,7 @@ void UpdateSawtooth(float amplitude_volts, float offset_volts, float period_ms)
     __HAL_TIM_SET_PRESCALER(&htim7, prescaler);
     __HAL_TIM_SET_AUTORELOAD(&htim7, period);
 
-    // Пере�?читать буфер
+    // Пере�?читать буфер
     CalculateSawtoothBuffer();
 }
 /* USER CODE END 4 */
