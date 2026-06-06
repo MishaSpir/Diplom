@@ -58,7 +58,7 @@ uint64_t last_time = 0;
 volatile uint8_t uart_tx_complete = 1;
 
 volatile uint16_t adc_value[2];
-uint8_t tx_buffer_adc[5];
+uint8_t tx_buffer_adc[6];
 bool adc_ready = false;
 bool led_flag = false;
 
@@ -284,11 +284,28 @@ int main(void)
               tx_buffer_adc[2] = (val2 >> 8) & 0xFF;  // тарший байт канала 2
               tx_buffer_adc[3] = val2 & 0xFF;         // младший байт канала 2
 
+              uint32_t current_gain_setting = hopamp2.Init.PgaGain;
+              switch (current_gain_setting){
+		  		 	 case OPAMP_PGA_GAIN_2_OR_MINUS_1:
+		            	 tx_buffer_adc[5] = 0x02;
+		  		 		 break;
+		  		 	 case OPAMP_PGA_GAIN_4_OR_MINUS_3:
+		            	 tx_buffer_adc[5] = 0x04;
+		  		 		 break;
+		  		 	 case OPAMP_PGA_GAIN_8_OR_MINUS_7:
+		            	 tx_buffer_adc[5] = 0x08;
+		  		 		 break;
+		  		 	 case OPAMP_PGA_GAIN_16_OR_MINUS_15:
+		            	 tx_buffer_adc[5] = 0x10;
+		  		 		 break;
+		  		 	 default:
+		  		 		 break;
+              }
 
               // Отправл�?ем, е�?ли UART �?вободен
               if (uart_tx_complete) {
                  uart_tx_complete = 0;
-                 HAL_UART_Transmit_IT(&huart1, tx_buffer_adc, 5);
+                 HAL_UART_Transmit_IT(&huart1, tx_buffer_adc, 6);
              }
 		  }
 

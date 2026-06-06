@@ -44,9 +44,11 @@ OnPlot2_flag = False
 OnPlot1Filter_flag = False
 OnPlot2Filter_flag = False
 distance_channel = False
+Inverse1Flag = False
 
 
 led_state = 0
+last_opamp_sent = 16
 
 def init_lowpass_filter(cutoff_freq, sampling_rate, order=2):
     """Инициализация LOWPASS фильтра Баттерворта"""
@@ -183,7 +185,8 @@ if __name__ == '__main__':
                 listY2 = np.array(pending_data2[-GRAPH_LENGTH_POINTS:], dtype=np.int32)                
                 listY2_filtered = np.array(filtered_values[-GRAPH_LENGTH_POINTS:], dtype=np.float64)
                 mean_value = np.mean(listY2_filtered)
-                listY2_filtered = 2 * mean_value - listY2_filtered
+                if(Inverse1Flag):
+                    listY2_filtered = 2 * mean_value - listY2_filtered
             else:
                 listY2 = np.roll(listY2, -n_new)
                 listY2[-n_new:] = pending_data2
@@ -220,38 +223,57 @@ if __name__ == '__main__':
                 last_time = time.time()
     
     def OnRead():
-        global buffer, pending_data_raw, pending_data2
-        
-        while serial.bytesAvailable():
+         global buffer, pending_data_raw, pending_data2, opamp_value
+    
+         while serial.bytesAvailable():
             data = serial.readAll()
             buffer.extend(data)
-            
+
             i = 0
             while i < len(buffer):
-                if i + 4 < len(buffer) and buffer[i+4] == 0x0A:
-                    packet = buffer[i:i+4]
-                    buffer = buffer[i+5:]
-                    
-                    if len(packet) >= 4:
-                        # Читаем как int (без преобразования в float)
-                        adc_1 = (packet[0] << 8) | packet[1]
-                        adc_2 = (packet[2] << 8) | packet[3]
+                # Новый формат: 4 байта данных + 0x0A + 1 байт OPAMP = 6 байт
+                # Проверяем, что есть хотя бы 6 байт для полного пакета
+                if i + 5 < len(buffer) and buffer[i+4] == 0x0A:
+                    # Извлекаем 4 байта данных (ADC значения)
+                    data_packet = buffer[i:i+4]
 
-                        
-                        
-                        # Сохраняем как int
+                    # Извлекаем OPAMP значение (байт после 0x0A)
+                    opamp_byte = buffer[i+5] if i+5 < len(buffer) else None
+
+                    # Удаляем весь пакет из буфера (4 + 1 + 1 = 6 байт)
+                    buffer = buffer[i+6:]  # пропускаем 4 байта + 0x0A + 1 байт OPAMP
+
+                    if len(data_packet) >= 4:
+                        # Читаем ADC значения
+                        adc_1 = (data_packet[0] << 8) | data_packet[1]
+                        adc_2 = (data_packet[2] << 8) | data_packet[3]
+
+                        # Сохраняем ADC данные
                         pending_data_raw.append(adc_1)
                         pending_data2.append(adc_2)
-                    
-                    i = 0
+
+                        # Сохраняем OPAMP значение (если есть)
+                        if opamp_byte is not None:
+                            opamp_value = opamp_byte
+                            # print(f"OPAMP коэффициент: {opamp_value}")
+                            if(opamp_value != last_opamp_sent):
+                                SerialSend(last_opamp_sent)  
+
+
+
+                    i = 0  # Начинаем поиск сначала
                 else:
                     i += 1
-            
+
+            # Защита от переполнения буфера
             if len(buffer) > 5000:
                 buffer = buffer[-5000:]
     
     def OnOpen():
-        global graph_timer,distance_timer, filter_state
+        global graph_timer,distance_timer, filter_state, opamp_value, last_opamp_sent
+
+        opamp_value = 0
+        last_opamp_sent = 16  # начальное значение усиления
         
         gui_port_name = ui.ComList.currentText()
         if not gui_port_name:
@@ -320,10 +342,14 @@ if __name__ == '__main__':
         SerialSend(led_state)
 
     def OpAmp_cnahge(val):
+        global last_opamp_sent
         val = pow(2,val)
         if val > 16:
             val = 16
-        SerialSend(val)
+        last_opamp_sent = val
+        SerialSend(val)    
+
+        
    
 
     def SerialSend(data): # int
@@ -350,11 +376,16 @@ if __name__ == '__main__':
 
     def changeChannel():
         global distance_channel
-        distance_channel = not distance_channel   
+        distance_channel = not distance_channel
+
+    def Inverse1():
+        global Inverse1Flag 
+        Inverse1Flag = not Inverse1Flag
 
 
     def TestBtn():
-        global listY_filtered_for_test, kexp,avrg
+        global listY_filtered_for_test, kexp,avrg,opamp_value
+        ui.gainLabel.setText("Current gain = " + str(opamp_value))
         if(distance_channel):
             listY_filtered_for_test = listY_filtered
             ui.chan_label.setText("Channel 2")
@@ -392,10 +423,10 @@ if __name__ == '__main__':
         curve4.setData(listX, comp)
         ui.lcdF1.display(F1)
         if(F1<40):
-            kexp = 0.01
+            kexp = 0.007
             # subexp = (-150)
         elif(F1>40 and F1<120):
-            kexp = 0.02
+            kexp = 0.01
             subexp = 50
         else:
             kexp = 0.025
@@ -561,6 +592,7 @@ if __name__ == '__main__':
     ui.testBtn.clicked.connect(TestBtn)
     ui.LED_btn.clicked.connect(LED_toggle)
     ui.changeChannel.clicked.connect(changeChannel)
+    ui.inverse1.clicked.connect(Inverse1)
     ui.OpAmpSlider.valueChanged.connect(OpAmp_cnahge)
     ui.graphUpdateSlider.valueChanged.connect(UpdateIntervalChange)
 
