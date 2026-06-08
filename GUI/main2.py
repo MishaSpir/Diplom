@@ -48,7 +48,10 @@ Inverse1Flag = False
 
 
 led_state = 0
-last_opamp_sent = 16
+opamp_value = 0      # текущий коэффициент OPAMP
+pin_state = 0        # состояние пина E15 (0 или 1)
+last_opamp_sent = 16 # последнее отправленное значение OPAMP
+
 
 def init_lowpass_filter(cutoff_freq, sampling_rate, order=2):
     """Инициализация LOWPASS фильтра Баттерворта"""
@@ -223,43 +226,56 @@ if __name__ == '__main__':
                 last_time = time.time()
     
     def OnRead():
-         global buffer, pending_data_raw, pending_data2, opamp_value
-    
-         while serial.bytesAvailable():
+        global buffer, pending_data_raw, pending_data2, opamp_value, pin_state,led_state
+
+        while serial.bytesAvailable():
             data = serial.readAll()
             buffer.extend(data)
 
             i = 0
             while i < len(buffer):
-                # Новый формат: 4 байта данных + 0x0A + 1 байт OPAMP = 6 байт
-                # Проверяем, что есть хотя бы 6 байт для полного пакета
-                if i + 5 < len(buffer) and buffer[i+4] == 0x0A:
-                    # Извлекаем 4 байта данных (ADC значения)
-                    data_packet = buffer[i:i+4]
+                # Новый формат: 4 байта ADC + 1 байт OPAMP + 1 байт PIN + 0x0A = 7 байт
+                # Ищем 0x0A на позиции 6 (седьмой байт)
+                if i + 6 < len(buffer) and buffer[i+6] == 0x0A:
+                    # Извлекаем 4 байта ADC значений
+                    adc_packet = buffer[i:i+4]
 
-                    # Извлекаем OPAMP значение (байт после 0x0A)
-                    opamp_byte = buffer[i+5] if i+5 < len(buffer) else None
+                    # Извлекаем OPAMP значение (байт на позиции 4)
+                    opamp_byte = buffer[i+4]
 
-                    # Удаляем весь пакет из буфера (4 + 1 + 1 = 6 байт)
-                    buffer = buffer[i+6:]  # пропускаем 4 байта + 0x0A + 1 байт OPAMP
+                    # Извлекаем PIN_STATE (байт на позиции 5)
+                    pin_state_byte = buffer[i+5]
 
-                    if len(data_packet) >= 4:
-                        # Читаем ADC значения
-                        adc_1 = (data_packet[0] << 8) | data_packet[1]
-                        adc_2 = (data_packet[2] << 8) | data_packet[3]
+                    # Удаляем весь пакет из буфера (7 байт)
+                    buffer = buffer[i+7:]  # 4 ADC + 1 OPAMP + 1 PIN + 0x0A = 7
+
+                    if len(adc_packet) >= 4:
+                        # Читаем ADC значения (big-endian)
+                        adc_1 = (adc_packet[0] << 8) | adc_packet[1]
+                        adc_2 = (adc_packet[2] << 8) | adc_packet[3]
 
                         # Сохраняем ADC данные
                         pending_data_raw.append(adc_1)
                         pending_data2.append(adc_2)
 
-                        # Сохраняем OPAMP значение (если есть)
-                        if opamp_byte is not None:
-                            opamp_value = opamp_byte
-                            # print(f"OPAMP коэффициент: {opamp_value}")
-                            if(opamp_value != last_opamp_sent):
-                                SerialSend(last_opamp_sent)  
+                        # Сохраняем OPAMP значение
+                        opamp_value = opamp_byte
+                        pin_state = pin_state_byte
 
+                        # Отладка (можно закомментировать)
 
+                        # Проверка OPAMP значения
+                        if opamp_value != last_opamp_sent:
+                            SerialSend(0x02, last_opamp_sent)    
+                        # elif pin_state == led_state:
+                        #         SerialSend(0x01, led_state)                            
+
+                        # # Обновляем LED состояние в GUI (если нужно)
+                        # if hasattr(ui, 'led_indicator'):
+                        #     if pin_state == 1:
+                        #         ui.led_indicator.setStyleSheet("background-color: green")
+                        #     else:
+                        #         ui.led_indicator.setStyleSheet("background-color: red")
 
                     i = 0  # Начинаем поиск сначала
                 else:
@@ -339,7 +355,7 @@ if __name__ == '__main__':
         else:
             led_state = 0    
         print(led_state)
-        SerialSend(led_state)
+        SerialSend(0x01,led_state)
 
     def OpAmp_cnahge(val):
         global last_opamp_sent
@@ -347,18 +363,19 @@ if __name__ == '__main__':
         if val > 16:
             val = 16
         last_opamp_sent = val
-        SerialSend(val)    
+        SerialSend(0x02,val)    
 
         
    
 
-    def SerialSend(data): # int
-        tx_send_buf = bytearray()    
-        tx_send_buf.append(0x24)           # Команда/маркер начала
-        tx_send_buf.append(data & 0xFF)    # Данные (обрезаем до 1 байта)
+    def SerialSend(key, data):  # key: 0x01 - radar, 0x02 - OpAmp, data: значение
+        tx_send_buf = bytearray()
+        tx_send_buf.append(0x24)           # Преамбула
+        tx_send_buf.append(key & 0xFF)     # Ключ (0x01 или 0x02)
+        tx_send_buf.append(data & 0xFF)    # Данные
         tx_send_buf.append(0x0A)           # Терминатор \n
         serial.write(tx_send_buf)
-        print(f"Отправлено: {tx_send_buf.hex().upper()}")
+        print(f"Отправлено: {tx_send_buf.hex().upper()} (key={key}, data={data})")
 
     def UpdateIntervalChange(val):
         global UPDATE_INTERVAL_MS,graph_timer

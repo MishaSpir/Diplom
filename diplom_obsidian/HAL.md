@@ -29,7 +29,7 @@ HAL_GPIO_WritePin(GPIOE,GPIO_PIN_3, flag);
 ```
 обработчик кнопки(переключатель)
 ```cpp
-button_state = !(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
+button_state = (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 	  if(button_state && !button_pressed && HAL_GetTick() - T >= 50){
 		  T = HAL_GetTick();
 		  button_pressed =1;
