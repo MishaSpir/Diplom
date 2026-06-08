@@ -344,17 +344,25 @@
        </rect>
       </property>
      </widget>
-     <widget class="QCheckBox" name="LED_btn">
+     <widget class="QCheckBox" name="radar_btn">
       <property name="geometry">
        <rect>
         <x>820</x>
         <y>50</y>
-        <width>51</width>
+        <width>171</width>
         <height>21</height>
        </rect>
       </property>
+      <property name="font">
+       <font>
+        <family>Ubuntu</family>
+        <pointsize>12</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
+      </property>
       <property name="text">
-       <string>LED</string>
+       <string>RADAR_MODULE</string>
       </property>
      </widget>
      <widget class="QWidget" name="verticalLayoutWidget">
@@ -518,25 +526,6 @@
       </property>
       <property name="text">
        <string>INVERSE_1</string>
-      </property>
-     </widget>
-     <widget class="QCheckBox" name="checkBox">
-      <property name="geometry">
-       <rect>
-        <x>160</x>
-        <y>0</y>
-        <width>121</width>
-        <height>71</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>RADAR_MODULE</string>
-      </property>
-      <property name="icon">
-       <iconset theme="black"/>
-      </property>
-      <property name="tristate">
-       <bool>false</bool>
       </property>
      </widget>
     </widget>

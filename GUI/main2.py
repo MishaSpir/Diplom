@@ -47,7 +47,7 @@ distance_channel = False
 Inverse1Flag = False
 
 
-led_state = 0
+radar_module_state = 0
 opamp_value = 0      # текущий коэффициент OPAMP
 pin_state = 0        # состояние пина E15 (0 или 1)
 last_opamp_sent = 16 # последнее отправленное значение OPAMP
@@ -226,7 +226,7 @@ if __name__ == '__main__':
                 last_time = time.time()
     
     def OnRead():
-        global buffer, pending_data_raw, pending_data2, opamp_value, pin_state,led_state
+        global buffer, pending_data_raw, pending_data2, opamp_value, pin_state,radar_module_state
 
         while serial.bytesAvailable():
             data = serial.readAll()
@@ -349,13 +349,13 @@ if __name__ == '__main__':
         global OnPlot1Filter_flag
         OnPlot1Filter_flag = not OnPlot1Filter_flag 
 
-    def LED_toggle(val):
+    def radarModuleToggle(val):
         if val:
-            led_state = 1
+            radar_module_state = 1
         else:
-            led_state = 0    
-        print(led_state)
-        SerialSend(0x01,led_state)
+            radar_module_state = 0    
+        print(radar_module_state)
+        SerialSend(0x01,radar_module_state)
 
     def OpAmp_cnahge(val):
         global last_opamp_sent
@@ -436,9 +436,15 @@ if __name__ == '__main__':
         
 
         comp, F1, F2 = frequency_detection(listY_filtered_for_test, listY_fil_shifted)
-        F1  = frequency_detection_simple(listY_filtered_for_test,listY_fil_shifted)
+        F1  = frequency_detection_simple(listY_filtered_for_test,listY_fil_shifted) # Чатота в герцах
         curve4.setData(listX, comp)
-        ui.lcdF1.display(F1)
+        R  = ((F1 * 299792458 * 50e-3) / (2*8.38e8)) # Дистанция в метрах
+        # Девиация примерно 83,8 МГц
+        # Период = 50 мс
+        # скорость света 299792458
+        ui.lcdF1.display(R)
+        print(f"F1 = {F1}")
+        print(f"R = {R}")
         if(F1<40):
             kexp = 0.007
             # subexp = (-150)
@@ -607,7 +613,7 @@ if __name__ == '__main__':
     ui.closeBtn.clicked.connect(OnClose)
     ui.updatePortList.clicked.connect(UpdatePortList)
     ui.testBtn.clicked.connect(TestBtn)
-    ui.LED_btn.clicked.connect(LED_toggle)
+    ui.radar_btn.clicked.connect(radarModuleToggle)
     ui.changeChannel.clicked.connect(changeChannel)
     ui.inverse1.clicked.connect(Inverse1)
     ui.OpAmpSlider.valueChanged.connect(OpAmp_cnahge)
