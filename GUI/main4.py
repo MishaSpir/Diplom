@@ -16,7 +16,6 @@ UPDATE_INTERVAL_MS = 100  # интервал обновления графика
 MAX_PENDING = 100
 kexp = 0.01
 avrg = 25
-g = 1
 
 # Параметры фильтра
 CUTOFF_FREQ = 200   # частота среза 
@@ -44,7 +43,7 @@ OnPlot1_flag = False
 OnPlot2_flag = False
 OnPlot1Filter_flag = False
 OnPlot2Filter_flag = False
-distance_channel = True
+distance_channel = False
 Inverse1Flag = False
 
 
@@ -260,7 +259,7 @@ if __name__ == '__main__':
                 last_time = time.time()
     
     def OnRead():
-        global buffer, pending_data_raw, pending_data2, opamp_value, pin_state,radar_module_state,g
+        global buffer, pending_data_raw, pending_data2, opamp_value, pin_state,radar_module_state
 
         while serial.bytesAvailable():
             data = serial.readAll()
@@ -299,8 +298,8 @@ if __name__ == '__main__':
                         # Отладка (можно закомментировать)
 
                         # Проверка OPAMP значения
-                        # if opamp_value != g:
-                        #     OpAmp_cnahge(g)
+                        # if opamp_value != last_opamp_sent:
+                        #     SerialSend(0x02, last_opamp_sent)    
                         # elif pin_state == led_state:
                         #         SerialSend(0x01, led_state)                            
 
@@ -397,8 +396,7 @@ if __name__ == '__main__':
         if val > 16:
             val = 16
         last_opamp_sent = val
-        SerialSend(0x02,val)
-    
+        SerialSend(0x02,val)    
 
         
    
@@ -434,146 +432,155 @@ if __name__ == '__main__':
         global Inverse1Flag 
         Inverse1Flag = not Inverse1Flag
 
-
-
-    def TestBtn():
-        global listY_filtered_for_test, kexp,avrg,opamp_value,g
+    def find_peaks_positions(signal, threshold_percent=70):
+        """
+        Находит позиции больших пиков (от пилообразного сигнала)
         
-        if(distance_channel):
-            listY_filtered_for_test = listY_filtered
-            ui.chan_label.setText("Channel 2")
-            
+        Возвращает индексы пиков, отсортированные по возрастанию
+        """
+        signal = np.asarray(signal)
+        max_amp = np.max(signal)
+        threshold = max_amp * threshold_percent / 100
+        
+        # Находим точки выше порога
+        high_points = np.where(signal > threshold)[0]
+        
+        if len(high_points) == 0:
+            return np.array([])
+        
+        # Группируем близкие точки в один пик
+        peaks = []
+        current_group = [high_points[0]]
+        
+        for i in range(1, len(high_points)):
+            if high_points[i] - high_points[i-1] < 50:  # близкие точки
+                current_group.append(high_points[i])
+            else:
+                # Сохраняем центр группы как пик
+                peaks.append(int(np.mean(current_group)))
+                current_group = [high_points[i]]
+        
+        peaks.append(int(np.mean(current_group)))
+        
+        return np.array(peaks)
+    
+    
+    def get_signal_between_peaks(signal, peaks, margin=50):
+        """
+        Берёт участок сигнала между двумя пиками
+        
+        Параметры:
+        - signal: сигнал
+        - peaks: массив индексов пиков
+        - margin: отступ от пиков (сколько точек пропустить)
+        """
+        if len(peaks) < 2:
+            # Если нашли только один пик, берём после него
+            if len(peaks) == 1:
+                start = peaks[0] + margin
+                end = len(signal) - margin
+            else:
+                # Если пиков нет, берём середину
+                start = len(signal) // 4
+                end = 3 * len(signal) // 4
         else:
-            listY_filtered_for_test = listY2_filtered
-            ui.chan_label.setText("Channel 1")
+            # Берём между первым и вторым пиком
+            start = peaks[0] + margin
+            end = peaks[1] - margin
         
-          # Удаляем пики (заменяем None, но лучше использовать маску)
-        # Проблема: None нельзя использовать в numpy операциях
-        # Лучше создать копию и заменить на среднее значение
-        cleaned_signal = np.array(listY_filtered_for_test, dtype=np.float64)
-        mean_val = np.mean(cleaned_signal)
-
-        # Убираем пики выше порога
-        # threshold = 34200
-        # cleaned_signal[cleaned_signal >= threshold] = mean_val
-        # curve3_raw.setData(listX[:len(cleaned_signal)], cleaned_signal)
-
-
+        # Проверяем границы
+        start = max(0, start)
+        end = min(len(signal), end)
         
-       # Первая фильтрация (для получения порога)
-        listY_fil = exponential_filter(listY_filtered_for_test, kexp)
-
-        # shift = 30
-        # listY_fil = listY_fil[shift:]  # Удаляем первые 10 элементов
-        # listY_filtered_for_test = listY_filtered_for_test[shift:]  # тоже 970 элементов
-
-        deviation = listY_filtered_for_test - listY_fil
-        rms_amplitude = np.sqrt(np.mean(deviation**2))
-        mean_abs_amplitude = np.mean(np.abs(deviation))
-
-        print(f"RMS амплитуда: {rms_amplitude:.2f}")
-        print(f"Средняя абсолютная амплитуда: {mean_abs_amplitude:.2f}")
-
-
-        if(rms_amplitude<190):
-            g = g+1
-            if(g>4): g = 4
-            OpAmp_cnahge(g)
-        elif(rms_amplitude>210):
-            g = g-1
-            if(g<1): g = 1
-            OpAmp_cnahge(g)
-        print(f"G от амплитуды:{g}")
-
-        thresh = 0.005
-        sub = 0
-        if(g == 1):
-            kexp = 0.0025
-            thresh = 0.5
-            sub = 0
-        elif(g == 2):
-            kexp = 0.014
-            thresh = 0.025
-        elif(g == 3):
-            kexp = 0.019
-            thresh = 0.015
-        else:    
-            kexp = 0.0275
-            sub = 0
-        ui.gainLabel_2.setText("Желаемый gain = " + str(pow(2,g)))
-        ui.gainLabel.setText("Current gain = " + str(opamp_value))
-        # OpAmp_cnahge(g)
-
-        # Создаём копию для очищенного сигнала
-        cleaned_signal = np.array(listY_filtered_for_test, dtype=np.float64)
-
-        # Заменяем пики (где исходный сигнал сильно отличается от фильтрованного)
-        for i in range(len(listY_filtered_for_test)):
-            # Если отношение отличается более чем на 5%
-            if i < len(listY_fil):
-                ratio = listY_filtered_for_test[i] / (listY_fil[i] + 1e-10)  # +1e-10 чтобы избежать деления на 0
-                if ratio > 1+thresh:  # отличается более чем на 5%
-                    cleaned_signal[i] = listY_fil[i]  # Заменяем на фильтрованное значение
-
-        # Вторая фильтрация (очищенного сигнала)
-        listY_fil2 = exponential_filter(cleaned_signal, kexp) - sub
-
-        # Отображаем
-        curve3_raw.setData(listX[:len(cleaned_signal)], cleaned_signal)
-        curve3_filtered.setData(listX[:len(listY_fil2)], listY_fil2)         
-        # listY_fil = moving_average_filter(listY_fil,avrg)
-        # listY_fil = moving_average_filter(listY_fil, 100)
-
-        # shift = 100 // 2  # 25 (int)
-
-        # Сдвиг в ПРОТИВОПОЛОЖНУЮ сторону (меняем знак)
-        # Было: -shift (влево)
-        # Стало: +shift (вправо)
-        # listY_fil_shifted = np.roll(listY_fil, shift)  # Убрали минус
-
-        # Заполняем начало, а не конец
-        # listY_fil_shifted[:shift] = listY_fil_shifted[shift]  # или listY_fil_shifted[shift+1]
-
-        # curve3_filtered.setData(listX[100:], listY_fil[100:])
+        if start >= end:
+            # Если область пустая, берём середину
+            start = len(signal) // 4
+            end = 3 * len(signal) // 4
+        
+        return signal[start:end], start, end
+    
+    
+    def TestBtn():
+        global listY_filtered_for_test, kexp, avrg, opamp_value
+        
+        # Получаем сигнал
+        if distance_channel:
+            raw_signal = np.array(listY_filtered, dtype=np.float64)
+        else:
+            raw_signal = np.array(listY2_filtered, dtype=np.float64)
+        
+        # 1. Находим пики (от пилообразного сигнала)
+        peaks = find_peaks_positions(raw_signal, threshold_percent=70)
+        log(f"Найдены пики на позициях: {peaks}")
+        
+        # 2. Берём участок между пиками (или середину)
+        if len(peaks) >= 2:
+            # Берём между первым и вторым пиком
+            cleaned_signal, start, end = get_signal_between_peaks(raw_signal, peaks, margin=50)
+            log(f"Используется участок между пиками: {start}-{end}")
+        elif len(peaks) == 1:
+            # Берём после пика
+            cleaned_signal, start, end = get_signal_between_peaks(raw_signal, peaks, margin=50)
+            log(f"Используется участок после пика: {start}-{end}")
+        else:
+            # Берём середину сигнала
+            start = len(raw_signal) // 4
+            end = 3 * len(raw_signal) // 4
+            cleaned_signal = raw_signal[start:end]
+            log(f"Пики не найдены, используем середину: {start}-{end}")
+        
+        # Сохраняем для отображения
+        listY_filtered_for_test = cleaned_signal
+        stable_X = listX[start:end]
+        
+        # Отображаем очищенный сигнал
+        curve3_raw.setData(stable_X, cleaned_signal)
+        
+        # Применяем экспоненциальный фильтр
+        listY_fil = exponential_filter(cleaned_signal, kexp)
+        
+        # Сдвиг
         shift = 30
-        listY_fil_shifted = listY_fil2[shift:]  # Удаляем первые 10 элементов
-
-        # Если нужно сохранить длину массива, добавляем нули в конец
-        listY_fil_shifted = np.append(listY_fil2[shift:], np.zeros(shift))
-        curve3_filtered.setData(listX[:len(listY_fil_shifted)-shift],listY_fil_shifted[:len(listY_fil_shifted)-shift])
+        if len(listY_fil) > shift:
+            listY_fil_shifted = listY_fil[shift:]
+            listY_fil_shifted = np.append(listY_fil_shifted, np.zeros(shift))
+            
+            display_len = min(len(stable_X), len(listY_fil_shifted))
+            curve3_filtered.setData(stable_X[:display_len-shift], 
+                                   listY_fil_shifted[:display_len-shift])
+            
+            # Вычисляем частоту
+            F1,F2 = frequency_detection_simple(cleaned_signal, listY_fil_shifted[:len(cleaned_signal)])
+        else:
+            F1 = 0
         
-
-        comp, F1, F2 = frequency_detection(listY_filtered_for_test, listY_fil_shifted)
-        F1,F2  = frequency_detection_simple(listY_filtered_for_test,listY_fil_shifted) # Чатота в герцах
-        curve4.setData(listX, comp)
-        R = ((F1 * 299792458 * 50e-3) / (2*8.38e8)) # Дистанция в метрах
-        # Девиация примерно 83,8 МГц
-        # Период = 50 мс
-        # скорость света 299792458
-        ui.lcdF1.display(f"{R:.2f}")
+        # Вычисляем расстояние
+        R = ((F1 * 299792458 * 50e-3) / (2 * 8.38e8))
+        
+        ui.lcdF1.display(R)
+        log(f"Частота: {F1:.2f} Гц, Расстояние: {R:.3f} м")
+        
+        # ... остальной код ...
+        ui.lcdF1.display(R)
         print(f"F1 = {F1}")
         print(f"R = {R}")
-        # if(F1<40):
-        #     kexp = 0.007
-        #     # subexp = (-150)
-        # elif(F1>40 and F1<120):
-        #     kexp = 0.01
-        #     subexp = 50
-        # else:
-        #     kexp = 0.0275
-        #     subexp = 100
-        #     avrg = 2
+        if(F1<40):
+            kexp = 0.007
+            # subexp = (-150)
+        elif(F1>40 and F1<120):
+            kexp = 0.01
+            subexp = 50
+        else:
+            kexp = 0.0275
+            subexp = 100
+            avrg = 2
         fs = 10000  # частота дискретизации
         # freq_fft, freqs, mags = frequency_detection_fft(listY_fil, fs)
         f,m = frequency_detection_fft_peaks(listY_filtered_for_test,fs,3)
         ui.lcdF2.display(F2)
         # print(freqs)
         # curve4.setData(f, m)
-
-        peak = get_signal_strength(listY_filtered)
-        print(f"rms: {peak}")
-
-        log(listY_fil)
+    
 
 
     def get_signal_strength(signal):

@@ -19,8 +19,8 @@ end
 
 stairs(0:(DAC_BUFFER_SIZE-1), dac_buffer, 'b-', 'LineWidth', 1.5);
 
-t1 = 78.75
-t2 = 91.2
+t1 = 48.18
+t2 = 53.30
 f0 = 1/((t2-t1)*1e-3)
 f0 = 179
 R = (f0 * 299792458 * 0.050) / (2*80e9)
