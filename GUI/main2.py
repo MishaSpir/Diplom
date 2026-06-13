@@ -499,7 +499,7 @@ if __name__ == '__main__':
             thresh = 0.015
         else:    
             kexp = 0.0275
-            sub = 0
+            thresh = 0.005
         ui.gainLabel_2.setText("Желаемый gain = " + str(pow(2,g)))
         ui.gainLabel.setText("Current gain = " + str(opamp_value))
         # OpAmp_cnahge(g)
@@ -546,7 +546,7 @@ if __name__ == '__main__':
         comp, F1, F2 = frequency_detection(listY_filtered_for_test, listY_fil_shifted)
         F1,F2  = frequency_detection_simple(listY_filtered_for_test,listY_fil_shifted) # Чатота в герцах
         curve4.setData(listX, comp)
-        R = ((F1 * 299792458 * 50e-3) / (2*8.38e8)) # Дистанция в метрах
+        R = ((F1 * 299792458 * 50e-3) / (2*8.5e8)) # Дистанция в метрах
         # Девиация примерно 83,8 МГц
         # Период = 50 мс
         # скорость света 299792458
