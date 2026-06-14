@@ -14,12 +14,14 @@ from scipy.fft import fft, fftfreq
 GRAPH_LENGTH_POINTS = 1000 # кол-во точек 
 UPDATE_INTERVAL_MS = 100  # интервал обновления графика 
 MAX_PENDING = 100
+AGC_INTERVAL = 1000
 kexp = 0.01
 avrg = 25
-g = 1
+g = 4
+thresh = 0.005
 
 # Параметры фильтра
-CUTOFF_FREQ = 200   # частота среза 
+CUTOFF_FREQ = 600   # частота среза 
 SAMPLING_RATE = 10000 # частота дискретизации
 
 buffer = bytearray()
@@ -38,6 +40,8 @@ pending_data2 = []     # Храним как int
 
 graph_timer = None
 distance_timer = None
+agc_timer = None
+uart_timer = None
 DISTANCE_UPDATE_INTERVAL = 500
 
 OnPlot1_flag = False
@@ -46,6 +50,8 @@ OnPlot1Filter_flag = False
 OnPlot2Filter_flag = False
 distance_channel = True
 Inverse1Flag = False
+VariousCutOffFlag = False
+AGCFlag = False
 
 
 radar_module_state = 0
@@ -320,7 +326,7 @@ if __name__ == '__main__':
                 buffer = buffer[-5000:]
     
     def OnOpen():
-        global graph_timer,distance_timer, filter_state, opamp_value, last_opamp_sent
+        global graph_timer,distance_timer, filter_state, opamp_value, last_opamp_sent,agc_timer,uart_timer
 
         opamp_value = 0
         last_opamp_sent = 16  # начальное значение усиления
@@ -350,7 +356,19 @@ if __name__ == '__main__':
                 distance_timer = QTimer()
                 distance_timer.timeout.connect(TestBtn)
                 distance_timer.start(DISTANCE_UPDATE_INTERVAL)
-                print(f"Таймер 2 запущен, интервал {DISTANCE_UPDATE_INTERVAL} мс")    
+                print(f"Таймер 2 запущен, интервал {DISTANCE_UPDATE_INTERVAL} мс")   
+
+            if agc_timer is None:
+                agc_timer = QTimer()
+                agc_timer.timeout.connect(agc_update)
+                agc_timer.start(AGC_INTERVAL)  # каждые 2 секунды
+                print(f"Таймер AGC запущен, интервал {AGC_INTERVAL} мс")
+
+            if uart_timer is None:
+                uart_timer = QTimer()
+                uart_timer.timeout.connect(uart_update)
+                uart_timer.start(100)  # каждые 0.1 секунды
+                print(f"Таймер uart_timer запущен, интервал {25} мс")              
         else:
             print("Can't open the port")
     
@@ -384,15 +402,16 @@ if __name__ == '__main__':
         OnPlot1Filter_flag = not OnPlot1Filter_flag 
 
     def radarModuleToggle(val):
+        global radar_module_state
         if val:
             radar_module_state = 1
         else:
             radar_module_state = 0    
-        print(radar_module_state)
         SerialSend(0x01,radar_module_state)
 
     def OpAmp_cnahge(val):
-        global last_opamp_sent
+        global last_opamp_sent,g 
+        g = val
         val = pow(2,val)
         if val > 16:
             val = 16
@@ -434,146 +453,205 @@ if __name__ == '__main__':
         global Inverse1Flag 
         Inverse1Flag = not Inverse1Flag
 
+    def VariousCutOff():
+        global VariousCutOffFlag,b,a,filter_state 
+        VariousCutOffFlag = not VariousCutOffFlag
+        if(VariousCutOffFlag == False):
+            b, a, filter_state = init_lowpass_filter(600, SAMPLING_RATE, order=4)
 
+    def AGC():
+        global AGCFlag, g
+        AGCFlag = not AGCFlag
+        OpAmp_cnahge(last_opamp_sent)   
+        if(AGCFlag == False):
+            g = 2    
+
+    def uart_update():
+        global opamp_value,last_opamp_sent,radar_module_state,pin_state
+        if(opamp_value != last_opamp_sent):
+            SerialSend(0x02,last_opamp_sent)
+        if(pin_state != radar_module_state):
+            SerialSend(0x01,radar_module_state)  
+        # log(f"radar_module_state: {radar_module_state}")
+        # log(f"pin_state: {pin_state}")  
+
+
+    def agc_update():
+        if(radar_module_state):
+            global listY_filtered_for_test, kexp,avrg,opamp_value,g,b,a,filter_state,thresh
+
+            if(distance_channel):
+                listY_filtered_for_test = listY_filtered
+                ui.chan_label.setText("Channel 2")
+
+            else:
+                listY_filtered_for_test = listY2_filtered
+                ui.chan_label.setText("Channel 1")
+
+
+            cleaned_signal = np.array(listY_filtered_for_test, dtype=np.float64)
+            mean_val = np.mean(cleaned_signal)
+
+
+       #     Первая фильтрация (для получения порога)
+            listY_fil = exponential_filter(listY_filtered_for_test, kexp)
+
+            # shift = 30
+            # listY_fil = listY_fil[shift:]  # Удаляем первые 10 элементов
+            # listY_filtered_for_test = listY_filtered_for_test[shift:]  # тоже 970 элементов
+
+            deviation = listY_filtered_for_test - listY_fil
+            rms_amplitude = np.sqrt(np.mean(deviation**2))
+            mean_abs_amplitude = np.mean(np.abs(deviation))
+
+            print(f"RMS амплитуда: {rms_amplitude:.2f}")
+            print(f"Средняя абсолютная амплитуда: {mean_abs_amplitude:.2f}")
+
+            if(AGCFlag):
+
+                if(rms_amplitude<220):
+                    g = g+1
+                    OpAmp_cnahge(g)
+                elif(rms_amplitude>400):
+                    g = g-1
+                    OpAmp_cnahge(g)
+                if(g>4): 
+                        g = 4
+                if(g<1): 
+                        g = 1            
+                print(f"G от амплитуды:{g}")
+                log(f"G от амплитуды:{g}")
+
+            if(g == 1):
+                kexp = 0.001
+                thresh = 0.5
+                # b, a, filter_state = init_lowpass_filter(200, SAMPLING_RATE, order=4)
+            elif(g == 2):
+                kexp = 0.014
+                thresh = 0.025
+                # b, a, filter_state = init_lowpass_filter(300, SAMPLING_RATE, order=4)
+            elif(g == 3):
+                kexp = 0.019
+                thresh = 0.015
+                # b, a, filter_state = init_lowpass_filter(500, SAMPLING_RATE, order=4)
+            else:    
+                kexp = 0.0275
+                thresh = 0.005
+                # b, a, filter_state = init_lowpass_filter(600, SAMPLING_RATE, order=4)
+
+            ui.gainLabel_2.setText("Желаемый gain = " + str(pow(2,g)))
+            ui.gainLabel.setText("Current gain = " + str(opamp_value))
 
     def TestBtn():
-        global listY_filtered_for_test, kexp,avrg,opamp_value,g
-        
-        if(distance_channel):
-            listY_filtered_for_test = listY_filtered
-            ui.chan_label.setText("Channel 2")
-            
-        else:
-            listY_filtered_for_test = listY2_filtered
-            ui.chan_label.setText("Channel 1")
-        
-          # Удаляем пики (заменяем None, но лучше использовать маску)
-        # Проблема: None нельзя использовать в numpy операциях
-        # Лучше создать копию и заменить на среднее значение
-        cleaned_signal = np.array(listY_filtered_for_test, dtype=np.float64)
-        mean_val = np.mean(cleaned_signal)
+        if(radar_module_state):
+            global listY_filtered_for_test, kexp,avrg,opamp_value,g,b,a,filter_state,thresh
 
-        # Убираем пики выше порога
-        # threshold = 34200
-        # cleaned_signal[cleaned_signal >= threshold] = mean_val
-        # curve3_raw.setData(listX[:len(cleaned_signal)], cleaned_signal)
+            if(distance_channel):
+                listY_filtered_for_test = listY_filtered
+                ui.chan_label.setText("Channel 2")
+
+            else:
+                listY_filtered_for_test = listY2_filtered
+                ui.chan_label.setText("Channel 1")
+
+            # Удаляем пики (заменяем None, но лучше использовать маску)
+            # Проблема: None нельзя использовать в numpy операциях
+            # Лучше создать копию и заменить на среднее значение
+            cleaned_signal = np.array(listY_filtered_for_test, dtype=np.float64)
 
 
-        
-       # Первая фильтрация (для получения порога)
-        listY_fil = exponential_filter(listY_filtered_for_test, kexp)
 
-        # shift = 30
-        # listY_fil = listY_fil[shift:]  # Удаляем первые 10 элементов
-        # listY_filtered_for_test = listY_filtered_for_test[shift:]  # тоже 970 элементов
-
-        deviation = listY_filtered_for_test - listY_fil
-        rms_amplitude = np.sqrt(np.mean(deviation**2))
-        mean_abs_amplitude = np.mean(np.abs(deviation))
-
-        print(f"RMS амплитуда: {rms_amplitude:.2f}")
-        print(f"Средняя абсолютная амплитуда: {mean_abs_amplitude:.2f}")
-
-
-        if(rms_amplitude<190):
-            g = g+1
-            if(g>4): g = 4
-            OpAmp_cnahge(g)
-        elif(rms_amplitude>210):
-            g = g-1
-            if(g<1): g = 1
-            OpAmp_cnahge(g)
-        print(f"G от амплитуды:{g}")
-
-        thresh = 0.005
-        sub = 0
-        if(g == 1):
-            kexp = 0.0025
-            thresh = 0.5
+            # thresh = 0.005
             sub = 0
-        elif(g == 2):
-            kexp = 0.014
-            thresh = 0.025
-        elif(g == 3):
-            kexp = 0.019
-            thresh = 0.015
-        else:    
-            kexp = 0.0275
-            thresh = 0.005
-        ui.gainLabel_2.setText("Желаемый gain = " + str(pow(2,g)))
-        ui.gainLabel.setText("Current gain = " + str(opamp_value))
-        # OpAmp_cnahge(g)
 
-        # Создаём копию для очищенного сигнала
-        cleaned_signal = np.array(listY_filtered_for_test, dtype=np.float64)
 
-        # Заменяем пики (где исходный сигнал сильно отличается от фильтрованного)
-        for i in range(len(listY_filtered_for_test)):
-            # Если отношение отличается более чем на 5%
-            if i < len(listY_fil):
-                ratio = listY_filtered_for_test[i] / (listY_fil[i] + 1e-10)  # +1e-10 чтобы избежать деления на 0
-                if ratio > 1+thresh:  # отличается более чем на 5%
-                    cleaned_signal[i] = listY_fil[i]  # Заменяем на фильтрованное значение
+            ui.gainLabel_2.setText("Желаемый gain = " + str(pow(2,g)))
+            ui.gainLabel.setText("Current gain = " + str(opamp_value))
+            # OpAmp_cnahge(g)
 
-        # Вторая фильтрация (очищенного сигнала)
-        listY_fil2 = exponential_filter(cleaned_signal, kexp) - sub
+            # Создаём копию для очищенного сигнала
+            cleaned_signal = np.array(listY_filtered_for_test, dtype=np.float64)
 
-        # Отображаем
-        curve3_raw.setData(listX[:len(cleaned_signal)], cleaned_signal)
-        curve3_filtered.setData(listX[:len(listY_fil2)], listY_fil2)         
-        # listY_fil = moving_average_filter(listY_fil,avrg)
-        # listY_fil = moving_average_filter(listY_fil, 100)
 
-        # shift = 100 // 2  # 25 (int)
 
-        # Сдвиг в ПРОТИВОПОЛОЖНУЮ сторону (меняем знак)
-        # Было: -shift (влево)
-        # Стало: +shift (вправо)
-        # listY_fil_shifted = np.roll(listY_fil, shift)  # Убрали минус
+            # Вторая фильтрация (очищенного сигнала)
+            listY_fil2 = exponential_filter(cleaned_signal, kexp) - sub
 
-        # Заполняем начало, а не конец
-        # listY_fil_shifted[:shift] = listY_fil_shifted[shift]  # или listY_fil_shifted[shift+1]
+                    # Заменяем пики (где исходный сигнал сильно отличается от фильтрованного)
+            for i in range(len(listY_filtered_for_test)):
+                # Если отношение отличается более чем на 5%
+                if i < len(listY_fil2):
+                    ratio = listY_filtered_for_test[i] / (listY_fil2[i] + 1e-10)  # +1e-10 чтобы избежать деления на 0
+                    if ratio > 1+thresh:  # отличается более чем на 5%
+                        cleaned_signal[i] = listY_fil2[i]  # Заменяем на фильтрованное значение
 
-        # curve3_filtered.setData(listX[100:], listY_fil[100:])
-        shift = 30
-        listY_fil_shifted = listY_fil2[shift:]  # Удаляем первые 10 элементов
+            # Отображаем
+            curve3_raw.setData(listX[:len(cleaned_signal)], cleaned_signal)
+            curve3_filtered.setData(listX[:len(listY_fil2)], listY_fil2)         
+            # listY_fil = moving_average_filter(listY_fil,avrg)
+            # listY_fil = moving_average_filter(listY_fil, 100)
 
-        # Если нужно сохранить длину массива, добавляем нули в конец
-        listY_fil_shifted = np.append(listY_fil2[shift:], np.zeros(shift))
-        curve3_filtered.setData(listX[:len(listY_fil_shifted)-shift],listY_fil_shifted[:len(listY_fil_shifted)-shift])
-        
+            # shift = 100 // 2  # 25 (int)
 
-        comp, F1, F2 = frequency_detection(listY_filtered_for_test, listY_fil_shifted)
-        F1,F2  = frequency_detection_simple(listY_filtered_for_test,listY_fil_shifted) # Чатота в герцах
-        curve4.setData(listX, comp)
-        R = ((F1 * 299792458 * 50e-3) / (2*8.5e8)) # Дистанция в метрах
-        # Девиация примерно 83,8 МГц
-        # Период = 50 мс
-        # скорость света 299792458
-        ui.lcdF1.display(f"{R:.2f}")
-        print(f"F1 = {F1}")
-        print(f"R = {R}")
-        # if(F1<40):
-        #     kexp = 0.007
-        #     # subexp = (-150)
-        # elif(F1>40 and F1<120):
-        #     kexp = 0.01
-        #     subexp = 50
-        # else:
-        #     kexp = 0.0275
-        #     subexp = 100
-        #     avrg = 2
-        fs = 10000  # частота дискретизации
-        # freq_fft, freqs, mags = frequency_detection_fft(listY_fil, fs)
-        f,m = frequency_detection_fft_peaks(listY_filtered_for_test,fs,3)
-        ui.lcdF2.display(F2)
-        # print(freqs)
-        # curve4.setData(f, m)
+            # Сдвиг в ПРОТИВОПОЛОЖНУЮ сторону (меняем знак)
+            # Было: -shift (влево)
+            # Стало: +shift (вправо)
+            # listY_fil_shifted = np.roll(listY_fil, shift)  # Убрали минус
 
-        peak = get_signal_strength(listY_filtered)
-        print(f"rms: {peak}")
+            # Заполняем начало, а не конец
+            # listY_fil_shifted[:shift] = listY_fil_shifted[shift]  # или listY_fil_shifted[shift+1]
 
-        log(listY_fil)
+            # curve3_filtered.setData(listX[100:], listY_fil[100:])
+            shift = 10
+            listY_fil_shifted = listY_fil2[shift:]  # Удаляем первые 10 элементов
+
+            # Если нужно сохранить длину массива, добавляем нули в конец
+            listY_fil_shifted = np.append(listY_fil2[shift:], np.zeros(shift))
+            curve3_filtered.setData(listX[:len(listY_fil_shifted)-shift],listY_fil_shifted[:len(listY_fil_shifted)-shift])
+
+
+            comp, F1, F2 = frequency_detection(listY_filtered_for_test, listY_fil_shifted)
+            F1,F2  = frequency_detection_simple(listY_filtered_for_test,listY_fil_shifted) # Чатота в герцах
+            if(VariousCutOffFlag):
+                if(F1 <= 100):
+                    b, a, filter_state = init_lowpass_filter(200, SAMPLING_RATE, order=4)
+                elif(F1 > 100 and F1 <= 150):
+                    b, a, filter_state = init_lowpass_filter(300, SAMPLING_RATE, order=4)
+                elif(F1 > 150 and F1 <= 200):
+                    b, a, filter_state = init_lowpass_filter(400, SAMPLING_RATE, order=4)    
+                elif(F1 > 200 and F1 <= 250):
+                    b, a, filter_state = init_lowpass_filter(500, SAMPLING_RATE, order=4)    
+                else:
+                    b, a, filter_state = init_lowpass_filter(600, SAMPLING_RATE, order=4)
+            curve4.setData(listX, comp)
+            R = ((F1 * 299792458 * 50e-3) / (2*8.5e8)) # Дистанция в метрах
+            # Девиация примерно 83,8 МГц
+            # Период = 50 мс
+            # скорость света 299792458
+            ui.lcdF1.display(f"{R:.2f}")
+            print(f"F1 = {F1}")
+            print(f"R = {R}")
+            # if(F1<40):
+            #     kexp = 0.007
+            #     # subexp = (-150)
+            # elif(F1>40 and F1<120):
+            #     kexp = 0.01
+            #     subexp = 50
+            # else:
+            #     kexp = 0.0275
+            #     subexp = 100
+            #     avrg = 2
+            fs = 10000  # частота дискретизации
+            # freq_fft, freqs, mags = frequency_detection_fft(listY_fil, fs)
+            f,m = frequency_detection_fft_peaks(listY_filtered_for_test,fs,3)
+            ui.lcdF2.display(F2)
+            # print(freqs)
+            # curve4.setData(f, m)
+
+            peak = get_signal_strength(listY_filtered)
+            print(f"rms: {peak}")
+
+            # log(listY_fil2)
 
 
     def get_signal_strength(signal):
@@ -754,6 +832,8 @@ if __name__ == '__main__':
     ui.inverse1.clicked.connect(Inverse1)
     ui.OpAmpSlider.valueChanged.connect(OpAmp_cnahge)
     ui.graphUpdateSlider.valueChanged.connect(UpdateIntervalChange)
+    ui.VariousCutOff.clicked.connect(VariousCutOff)
+    ui.AGC.clicked.connect(AGC)
 
     
 
