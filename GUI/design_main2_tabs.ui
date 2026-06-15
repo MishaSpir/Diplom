@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1800</width>
-    <height>946</height>
+    <width>1900</width>
+    <height>950</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -19,7 +19,7 @@
      <rect>
       <x>0</x>
       <y>100</y>
-      <width>1791</width>
+      <width>1871</width>
       <height>861</height>
      </rect>
     </property>
@@ -42,8 +42,8 @@
       <widget class="QLabel" name="label_7">
        <property name="geometry">
         <rect>
-         <x>10</x>
-         <y>10</y>
+         <x>0</x>
+         <y>0</y>
          <width>131</width>
          <height>31</height>
         </rect>
@@ -66,7 +66,7 @@
        <rect>
         <x>160</x>
         <y>410</y>
-        <width>641</width>
+        <width>631</width>
         <height>291</height>
        </rect>
       </property>
@@ -74,7 +74,7 @@
        <property name="geometry">
         <rect>
          <x>0</x>
-         <y>10</y>
+         <y>0</y>
          <width>131</width>
          <height>31</height>
         </rect>
@@ -95,8 +95,8 @@
      <widget class="QWidget" name="layoutWidget">
       <property name="geometry">
        <rect>
-        <x>10</x>
-        <y>420</y>
+        <x>20</x>
+        <y>590</y>
         <width>123</width>
         <height>54</height>
        </rect>
@@ -122,7 +122,7 @@
       <property name="geometry">
        <rect>
         <x>90</x>
-        <y>20</y>
+        <y>120</y>
         <width>51</width>
         <height>21</height>
        </rect>
@@ -142,16 +142,16 @@
      <widget class="QLabel" name="label_6">
       <property name="geometry">
        <rect>
-        <x>20</x>
-        <y>250</y>
-        <width>111</width>
+        <x>10</x>
+        <y>350</y>
+        <width>141</width>
         <height>31</height>
        </rect>
       </property>
       <property name="font">
        <font>
-        <family>Lato Black</family>
-        <pointsize>10</pointsize>
+        <family>Ubuntu</family>
+        <pointsize>12</pointsize>
         <weight>75</weight>
         <bold>true</bold>
        </font>
@@ -163,8 +163,8 @@
      <widget class="QSlider" name="graphUpdateSlider">
       <property name="geometry">
        <rect>
-        <x>30</x>
-        <y>30</y>
+        <x>20</x>
+        <y>130</y>
         <width>50</width>
         <height>200</height>
        </rect>
@@ -207,7 +207,7 @@
       <property name="geometry">
        <rect>
         <x>90</x>
-        <y>210</y>
+        <y>310</y>
         <width>51</width>
         <height>21</height>
        </rect>
@@ -224,21 +224,11 @@
        <string>Slow</string>
       </property>
      </widget>
-     <widget class="QLCDNumber" name="lcdF2">
-      <property name="geometry">
-       <rect>
-        <x>1400</x>
-        <y>550</y>
-        <width>211</width>
-        <height>71</height>
-       </rect>
-      </property>
-     </widget>
      <widget class="QPushButton" name="testBtn">
       <property name="geometry">
        <rect>
-        <x>1070</x>
-        <y>140</y>
+        <x>860</x>
+        <y>610</y>
         <width>161</width>
         <height>41</height>
        </rect>
@@ -250,8 +240,8 @@
      <widget class="PlotWidget" name="graphTest" native="true">
       <property name="geometry">
        <rect>
-        <x>1250</x>
-        <y>30</y>
+        <x>1120</x>
+        <y>80</y>
         <width>521</width>
         <height>241</height>
        </rect>
@@ -260,8 +250,8 @@
      <widget class="QLabel" name="label">
       <property name="geometry">
        <rect>
-        <x>820</x>
-        <y>210</y>
+        <x>860</x>
+        <y>280</y>
         <width>131</width>
         <height>31</height>
        </rect>
@@ -275,14 +265,14 @@
        </font>
       </property>
       <property name="text">
-       <string>OpAMP Gain</string>
+       <string>OpAmp Gain</string>
       </property>
      </widget>
      <widget class="QLCDNumber" name="lcdF1">
       <property name="geometry">
        <rect>
-        <x>1200</x>
-        <y>550</y>
+        <x>1120</x>
+        <y>610</y>
         <width>181</width>
         <height>71</height>
        </rect>
@@ -291,8 +281,8 @@
      <widget class="QSlider" name="OpAmpSlider">
       <property name="geometry">
        <rect>
-        <x>830</x>
-        <y>100</y>
+        <x>870</x>
+        <y>170</y>
         <width>61</width>
         <height>101</height>
        </rect>
@@ -337,8 +327,8 @@
      <widget class="PlotWidget" name="widget" native="true">
       <property name="geometry">
        <rect>
-        <x>1250</x>
-        <y>290</y>
+        <x>1120</x>
+        <y>340</y>
         <width>511</width>
         <height>241</height>
        </rect>
@@ -347,8 +337,8 @@
      <widget class="QCheckBox" name="radar_btn">
       <property name="geometry">
        <rect>
-        <x>820</x>
-        <y>50</y>
+        <x>860</x>
+        <y>120</y>
         <width>171</width>
         <height>21</height>
        </rect>
@@ -368,8 +358,8 @@
      <widget class="QWidget" name="verticalLayoutWidget">
       <property name="geometry">
        <rect>
-        <x>900</x>
-        <y>100</y>
+        <x>940</x>
+        <y>170</y>
         <width>71</width>
         <height>101</height>
        </rect>
@@ -440,8 +430,8 @@
      <widget class="QWidget" name="layoutWidget_4">
       <property name="geometry">
        <rect>
-        <x>10</x>
-        <y>340</y>
+        <x>20</x>
+        <y>510</y>
         <width>123</width>
         <height>54</height>
        </rect>
@@ -466,8 +456,8 @@
      <widget class="QPushButton" name="changeChannel">
       <property name="geometry">
        <rect>
-        <x>1070</x>
-        <y>80</y>
+        <x>860</x>
+        <y>550</y>
         <width>161</width>
         <height>41</height>
        </rect>
@@ -479,11 +469,19 @@
      <widget class="QLabel" name="chan_label">
       <property name="geometry">
        <rect>
-        <x>1020</x>
-        <y>40</y>
+        <x>860</x>
+        <y>520</y>
         <width>101</width>
         <height>41</height>
        </rect>
+      </property>
+      <property name="font">
+       <font>
+        <family>Ubuntu</family>
+        <pointsize>12</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
       </property>
       <property name="text">
        <string>Channel = 1</string>
@@ -492,9 +490,9 @@
      <widget class="QLabel" name="gainLabel">
       <property name="geometry">
        <rect>
-        <x>820</x>
-        <y>270</y>
-        <width>151</width>
+        <x>860</x>
+        <y>360</y>
+        <width>201</width>
         <height>20</height>
        </rect>
       </property>
@@ -507,16 +505,16 @@
        </font>
       </property>
       <property name="text">
-       <string>Current Gain =</string>
+       <string>current Gain =</string>
       </property>
      </widget>
      <widget class="Line" name="line">
       <property name="geometry">
        <rect>
-        <x>810</x>
-        <y>310</y>
-        <width>161</width>
-        <height>20</height>
+        <x>840</x>
+        <y>399</y>
+        <width>211</width>
+        <height>31</height>
        </rect>
       </property>
       <property name="orientation">
@@ -526,8 +524,8 @@
      <widget class="QPushButton" name="inverse1">
       <property name="geometry">
        <rect>
-        <x>10</x>
-        <y>310</y>
+        <x>20</x>
+        <y>480</y>
         <width>121</width>
         <height>23</height>
        </rect>
@@ -539,8 +537,8 @@
      <widget class="QLabel" name="gainLabel_2">
       <property name="geometry">
        <rect>
-        <x>820</x>
-        <y>240</y>
+        <x>860</x>
+        <y>330</y>
         <width>191</width>
         <height>20</height>
        </rect>
@@ -554,16 +552,16 @@
        </font>
       </property>
       <property name="text">
-       <string>Желаемый Gain =</string>
+       <string>desired  Gain =</string>
       </property>
      </widget>
-     <widget class="QCheckBox" name="VariousCutOff">
+     <widget class="QLabel" name="gainLabel_3">
       <property name="geometry">
        <rect>
-        <x>1070</x>
-        <y>200</y>
-        <width>181</width>
-        <height>21</height>
+        <x>1120</x>
+        <y>690</y>
+        <width>101</width>
+        <height>20</height>
        </rect>
       </property>
       <property name="font">
@@ -571,35 +569,121 @@
         <family>Ubuntu</family>
         <pointsize>12</pointsize>
         <weight>75</weight>
-        <italic>false</italic>
         <bold>true</bold>
        </font>
       </property>
       <property name="text">
-       <string>VARIOUS_CUT_OFF</string>
+       <string>Distance, m </string>
       </property>
      </widget>
-     <widget class="QCheckBox" name="AGC">
+     <widget class="Line" name="line_2">
       <property name="geometry">
        <rect>
-        <x>1070</x>
-        <y>230</y>
-        <width>171</width>
-        <height>21</height>
+        <x>840</x>
+        <y>70</y>
+        <width>211</width>
+        <height>31</height>
        </rect>
       </property>
-      <property name="font">
-       <font>
-        <family>Ubuntu</family>
-        <pointsize>12</pointsize>
-        <weight>75</weight>
-        <italic>false</italic>
-        <bold>true</bold>
-       </font>
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
       </property>
-      <property name="text">
-       <string>AGC</string>
+     </widget>
+     <widget class="Line" name="line_3">
+      <property name="geometry">
+       <rect>
+        <x>840</x>
+        <y>670</y>
+        <width>211</width>
+        <height>31</height>
+       </rect>
       </property>
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+     </widget>
+     <widget class="Line" name="line_4">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>90</y>
+        <width>141</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+     </widget>
+     <widget class="Line" name="line_5">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>400</y>
+        <width>141</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+     </widget>
+     <widget class="Line" name="line_6">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>690</y>
+        <width>141</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+     </widget>
+     <widget class="QWidget" name="">
+      <property name="geometry">
+       <rect>
+        <x>860</x>
+        <y>460</y>
+        <width>251</width>
+        <height>58</height>
+       </rect>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_3">
+       <item>
+        <widget class="QCheckBox" name="VariousCutOff">
+         <property name="font">
+          <font>
+           <family>Ubuntu</family>
+           <pointsize>12</pointsize>
+           <weight>75</weight>
+           <italic>false</italic>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="text">
+          <string>VARIOUS_CUT_OFF</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="AGC">
+         <property name="font">
+          <font>
+           <family>Ubuntu</family>
+           <pointsize>12</pointsize>
+           <weight>75</weight>
+           <italic>false</italic>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="text">
+          <string>AGC</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
      </widget>
     </widget>
     <widget class="QWidget" name="tab_2">

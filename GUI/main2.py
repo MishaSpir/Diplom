@@ -7,7 +7,6 @@ import pyqtgraph as pg
 import numpy as np
 from scipy import signal
 import time
-from scipy.ndimage import uniform_filter1d
 from scipy.fft import fft, fftfreq
 
 # Константы
@@ -21,7 +20,7 @@ g = 4
 thresh = 0.005
 
 # Параметры фильтра
-CUTOFF_FREQ = 600   # частота среза 
+CUTOFF_FREQ = 400   # частота среза 
 SAMPLING_RATE = 10000 # частота дискретизации
 
 buffer = bytearray()
@@ -130,7 +129,7 @@ if __name__ == '__main__':
     ui.graph2.showGrid(x=True, y=True)
     ui.graph2.setLabel('left', 'Сигналы')
     ui.graph2.setLabel('bottom', 'ms')
-    ui.graph2.setTitle('Сравнение сигналов: СИНИЙ - фильтрованный, КРАСНЫЙ - сырой')
+    ui.graph2.setTitle('')
     
     # Линия для ФИЛЬТРОВАННОГО сигнала (синяя) - float значения
     pen_filtered = pg.mkPen(color=(0, 0, 255), width=5)
@@ -146,7 +145,7 @@ if __name__ == '__main__':
     ui.graph.showGrid(x=True, y=True)
     ui.graph.setLabel('left', 'Канал 2')
     ui.graph.setLabel('bottom', 'ms')
-    ui.graph.setTitle('Второй канал (без фильтра)')
+    ui.graph.setTitle('')
     curve2 = ui.graph.plot(listX, listY2, pen=pen2)
     curve2_filtered = ui.graph.plot(listX, listY2_filtered, pen=pen_filtered)
 
@@ -302,21 +301,6 @@ if __name__ == '__main__':
                         opamp_value = opamp_byte
                         pin_state = pin_state_byte
 
-                        # Отладка (можно закомментировать)
-
-                        # Проверка OPAMP значения
-                        # if opamp_value != g:
-                        #     OpAmp_cnahge(g)
-                        # elif pin_state == led_state:
-                        #         SerialSend(0x01, led_state)                            
-
-                        # # Обновляем LED состояние в GUI (если нужно)
-                        # if hasattr(ui, 'led_indicator'):
-                        #     if pin_state == 1:
-                        #         ui.led_indicator.setStyleSheet("background-color: green")
-                        #     else:
-                        #         ui.led_indicator.setStyleSheet("background-color: red")
-
                     i = 0  # Начинаем поиск сначала
                 else:
                     i += 1
@@ -354,7 +338,7 @@ if __name__ == '__main__':
 
             if distance_timer is None:
                 distance_timer = QTimer()
-                distance_timer.timeout.connect(TestBtn)
+                distance_timer.timeout.connect(findDistance)
                 distance_timer.start(DISTANCE_UPDATE_INTERVAL)
                 print(f"Таймер 2 запущен, интервал {DISTANCE_UPDATE_INTERVAL} мс")   
 
@@ -410,8 +394,9 @@ if __name__ == '__main__':
         SerialSend(0x01,radar_module_state)
 
     def OpAmp_cnahge(val):
-        global last_opamp_sent,g 
+        global last_opamp_sent, last_opamp_slider_val,g
         g = val
+        last_opamp_slider_val  = val
         val = pow(2,val)
         if val > 16:
             val = 16
@@ -420,8 +405,6 @@ if __name__ == '__main__':
     
 
         
-   
-
     def SerialSend(key, data):  # key: 0x01 - radar, 0x02 - OpAmp, data: значение
         tx_send_buf = bytearray()
         tx_send_buf.append(0x24)           # Преамбула
@@ -460,11 +443,12 @@ if __name__ == '__main__':
             b, a, filter_state = init_lowpass_filter(600, SAMPLING_RATE, order=4)
 
     def AGC():
-        global AGCFlag, g
+        global AGCFlag, g,opamp_value
         AGCFlag = not AGCFlag
-        OpAmp_cnahge(last_opamp_sent)   
-        if(AGCFlag == False):
-            g = 2    
+        OpAmp_cnahge(g)   
+        # if(AGCFlag == False):
+        #     g = opamp_value
+        #     OpAmp_cnahge(g)    
 
     def uart_update():
         global opamp_value,last_opamp_sent,radar_module_state,pin_state
@@ -496,9 +480,7 @@ if __name__ == '__main__':
        #     Первая фильтрация (для получения порога)
             listY_fil = exponential_filter(listY_filtered_for_test, kexp)
 
-            # shift = 30
-            # listY_fil = listY_fil[shift:]  # Удаляем первые 10 элементов
-            # listY_filtered_for_test = listY_filtered_for_test[shift:]  # тоже 970 элементов
+
 
             deviation = listY_filtered_for_test - listY_fil
             rms_amplitude = np.sqrt(np.mean(deviation**2))
@@ -508,7 +490,6 @@ if __name__ == '__main__':
             print(f"Средняя абсолютная амплитуда: {mean_abs_amplitude:.2f}")
 
             if(AGCFlag):
-
                 if(rms_amplitude<220):
                     g = g+1
                     OpAmp_cnahge(g)
@@ -525,24 +506,24 @@ if __name__ == '__main__':
             if(g == 1):
                 kexp = 0.001
                 thresh = 0.5
-                # b, a, filter_state = init_lowpass_filter(200, SAMPLING_RATE, order=4)
+
             elif(g == 2):
                 kexp = 0.014
                 thresh = 0.025
-                # b, a, filter_state = init_lowpass_filter(300, SAMPLING_RATE, order=4)
+
             elif(g == 3):
                 kexp = 0.019
                 thresh = 0.015
-                # b, a, filter_state = init_lowpass_filter(500, SAMPLING_RATE, order=4)
+
             else:    
                 kexp = 0.0275
                 thresh = 0.005
-                # b, a, filter_state = init_lowpass_filter(600, SAMPLING_RATE, order=4)
 
-            ui.gainLabel_2.setText("Желаемый gain = " + str(pow(2,g)))
-            ui.gainLabel.setText("Current gain = " + str(opamp_value))
 
-    def TestBtn():
+            ui.gainLabel_2.setText("desired gain = " + str(pow(2,g)))
+            ui.gainLabel.setText("current gain = " + str(opamp_value))
+
+    def findDistance():
         if(radar_module_state):
             global listY_filtered_for_test, kexp,avrg,opamp_value,g,b,a,filter_state,thresh
 
@@ -554,54 +535,23 @@ if __name__ == '__main__':
                 listY_filtered_for_test = listY2_filtered
                 ui.chan_label.setText("Channel 1")
 
-            # Удаляем пики (заменяем None, но лучше использовать маску)
-            # Проблема: None нельзя использовать в numpy операциях
-            # Лучше создать копию и заменить на среднее значение
             cleaned_signal = np.array(listY_filtered_for_test, dtype=np.float64)
-
-
-
-            # thresh = 0.005
-            sub = 0
-
-
-            ui.gainLabel_2.setText("Желаемый gain = " + str(pow(2,g)))
-            ui.gainLabel.setText("Current gain = " + str(opamp_value))
-            # OpAmp_cnahge(g)
-
-            # Создаём копию для очищенного сигнала
-            cleaned_signal = np.array(listY_filtered_for_test, dtype=np.float64)
-
-
 
             # Вторая фильтрация (очищенного сигнала)
-            listY_fil2 = exponential_filter(cleaned_signal, kexp) - sub
+            listY_fil2 = exponential_filter(cleaned_signal, kexp)
 
-                    # Заменяем пики (где исходный сигнал сильно отличается от фильтрованного)
-            for i in range(len(listY_filtered_for_test)):
-                # Если отношение отличается более чем на 5%
-                if i < len(listY_fil2):
-                    ratio = listY_filtered_for_test[i] / (listY_fil2[i] + 1e-10)  # +1e-10 чтобы избежать деления на 0
-                    if ratio > 1+thresh:  # отличается более чем на 5%
-                        cleaned_signal[i] = listY_fil2[i]  # Заменяем на фильтрованное значение
+            # # Заменяем пики (где исходный сигнал сильно отличается от фильтрованного)
+            # for i in range(len(listY_filtered_for_test)):
+            #     # Если отношение отличается более чем на 5%
+            #     if i < len(listY_fil2):
+            #         ratio = listY_filtered_for_test[i] / (listY_fil2[i] + 1e-10)  # +1e-10 чтобы избежать деления на 0
+            #         if ratio > 1+thresh:  # отличается более чем на 5%
+            #             cleaned_signal[i] = listY_fil2[i]  # Заменяем на фильтрованное значение
 
             # Отображаем
             curve3_raw.setData(listX[:len(cleaned_signal)], cleaned_signal)
             curve3_filtered.setData(listX[:len(listY_fil2)], listY_fil2)         
-            # listY_fil = moving_average_filter(listY_fil,avrg)
-            # listY_fil = moving_average_filter(listY_fil, 100)
-
-            # shift = 100 // 2  # 25 (int)
-
-            # Сдвиг в ПРОТИВОПОЛОЖНУЮ сторону (меняем знак)
-            # Было: -shift (влево)
-            # Стало: +shift (вправо)
-            # listY_fil_shifted = np.roll(listY_fil, shift)  # Убрали минус
-
-            # Заполняем начало, а не конец
-            # listY_fil_shifted[:shift] = listY_fil_shifted[shift]  # или listY_fil_shifted[shift+1]
-
-            # curve3_filtered.setData(listX[100:], listY_fil[100:])
+           
             shift = 10
             listY_fil_shifted = listY_fil2[shift:]  # Удаляем первые 10 элементов
 
@@ -622,7 +572,7 @@ if __name__ == '__main__':
                 elif(F1 > 200 and F1 <= 250):
                     b, a, filter_state = init_lowpass_filter(500, SAMPLING_RATE, order=4)    
                 else:
-                    b, a, filter_state = init_lowpass_filter(600, SAMPLING_RATE, order=4)
+                    b, a, filter_state = init_lowpass_filter(500, SAMPLING_RATE, order=4)
             curve4.setData(listX, comp)
             R = ((F1 * 299792458 * 50e-3) / (2*8.5e8)) # Дистанция в метрах
             # Девиация примерно 83,8 МГц
@@ -644,7 +594,7 @@ if __name__ == '__main__':
             fs = 10000  # частота дискретизации
             # freq_fft, freqs, mags = frequency_detection_fft(listY_fil, fs)
             f,m = frequency_detection_fft_peaks(listY_filtered_for_test,fs,3)
-            ui.lcdF2.display(F2)
+            # ui.lcdF2.display(F2)
             # print(freqs)
             # curve4.setData(f, m)
 
@@ -706,43 +656,6 @@ if __name__ == '__main__':
         signal = np.asarray(signal)
         rms = np.sqrt(np.mean(signal**2))
         return rms
-    def frequency_detection(signal, filtered_signal, threshold=None, time_span=0.05):
-        signal = np.asarray(signal)
-
-        if threshold is None:
-            threshold = np.asarray(filtered_signal)
-        elif isinstance(threshold, (int, float)):
-            threshold = np.full_like(signal, threshold)
-
-        n = len(signal)
-        comp = np.zeros(n, dtype=np.int8)
-
-        flag = 0
-        count = 0
-        count_one_period = 0
-
-        for i in range(n):
-            if signal[i] > threshold[i]:
-                comp[i] = 1
-                if flag == 0:
-                    count += 1
-                    if i < 500:  # Первые 500 отсчётов
-                        count_one_period = count
-                        count_one_period = count_one_period - 1
-                flag = 1
-            else:
-                comp[i] = 0
-                flag = 0
-
-        # Расчёт частоты
-        # Предполагается, что time_span = длительность сигнала (в секундах)
-        # count_one_period - количество переходов за первый период (~50 мс)
-        # count - количество переходов за всю длительность (4*0.05 = 0.2 сек)
-
-        F_found = count_one_period / time_span if time_span > 0 else 0
-        F_found2 = count / (2 * time_span) if time_span > 0 else 0
-
-        return comp, F_found, count_one_period
     
     def frequency_detection_simple(signal, threshold, fs=10000):
         """
@@ -826,7 +739,7 @@ if __name__ == '__main__':
     ui.openBtn.clicked.connect(OnOpen)
     ui.closeBtn.clicked.connect(OnClose)
     ui.updatePortList.clicked.connect(UpdatePortList)
-    ui.testBtn.clicked.connect(TestBtn)
+    ui.testBtn.clicked.connect(findDistance)
     ui.radar_btn.clicked.connect(radarModuleToggle)
     ui.changeChannel.clicked.connect(changeChannel)
     ui.inverse1.clicked.connect(Inverse1)

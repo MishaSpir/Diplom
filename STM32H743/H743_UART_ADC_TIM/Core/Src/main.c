@@ -72,7 +72,7 @@ volatile uint8_t packet_ready = 0;
 volatile uint8_t received_key = 0;    // Ключ (команда)
 volatile uint8_t received_data = 0;
 volatile uint8_t received_byte = 0;
-volatile uint8_t synced = 0;  // Флаг �?инхронизации
+volatile uint8_t synced = 0;  // Флаг синхронизации
 uint32_t last_byte_time = 0;
 
 typedef enum {
@@ -86,7 +86,7 @@ uint32_t DAC_in;
 uint32_t SawDac;
 float SawAmpVol = 1.5;
 float OffsetVol = 1.0;
-uint32_t SawPeriodMs;    // Период пилы в милли�?екундах
+uint32_t SawPeriodMs;    // Период пилы в милли секундах
 uint32_t SawAmpDac;
 uint32_t OffsetDac;
 volatile uint16_t dac_buffer[DAC_BUFFER_SIZE];
@@ -114,10 +114,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if(huart == &huart1)
     {
-    	 // Провер�?ем наличие ошибок
+    	 // Проверяем наличие ошибок
     	        if (__HAL_UART_GET_FLAG(huart, UART_FLAG_ORE)) {
     	            __HAL_UART_CLEAR_FLAG(huart, UART_FLAG_ORE);
-    	            // Сбро�? �?о�?то�?ни�? при ошибке переполнени�?
+
     	            uart_state = WAIT_PREAMBLE;
     	            HAL_UART_Receive_IT(&huart1, &received_byte, 1);
     	            return;
@@ -247,22 +247,22 @@ int main(void)
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_value, 2);
   HAL_TIM_Base_Start(&htim6);
 
-  HAL_OPAMP_Stop(&hopamp1);                    // О�?танавливаем е�?ли был запущен
-  hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;  // У�?танавливаем у�?иление
-  if (HAL_OPAMP_Init(&hopamp1) != HAL_OK)      // Инициализируем �? новыми параметрами
+  HAL_OPAMP_Stop(&hopamp1);                    // Останавливаем если был запущен
+  hopamp1.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;  // Устанавливаем усиление
+  if (HAL_OPAMP_Init(&hopamp1) != HAL_OK)      // Инициализируем  новыми параметрами
   {
       Error_Handler();
   }
-  HAL_OPAMP_Start(&hopamp1);                   // Запу�?каем OPAMP
+  HAL_OPAMP_Start(&hopamp1);                   // Запускаем OPAMP
 
 //------------------------------------------------------------------
-  HAL_OPAMP_Stop(&hopamp2);                    // О�?танавливаем е�?ли был запущен
-  hopamp2.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;  // У�?танавливаем у�?иление
-  if (HAL_OPAMP_Init(&hopamp2) != HAL_OK)      // Инициализируем �? новыми параметрами
+  HAL_OPAMP_Stop(&hopamp2);                    // Останавливаем если был запущен
+  hopamp2.Init.PgaGain = OPAMP_PGA_GAIN_16_OR_MINUS_15;  // Устанавливаем усиление
+  if (HAL_OPAMP_Init(&hopamp2) != HAL_OK)      // Инициализируем новыми параметрами
   {
       Error_Handler();
   }
-  HAL_OPAMP_Start(&hopamp2);                   // Запу�?каем OPAMP
+  HAL_OPAMP_Start(&hopamp2);                   // Запускаем OPAMP
   tx_buffer_adc[6] = 0x0A; // Терминатор
   HAL_UART_Receive_IT(&huart1, &received_byte, 1);
 
@@ -300,9 +300,9 @@ int main(void)
               __enable_irq();
 
               // Упаковываем в 4 байта
-              tx_buffer_adc[0] = (val1 >> 8) & 0xFF;  // тарший байт канала 1
+              tx_buffer_adc[0] = (val1 >> 8) & 0xFF;  // старший байт канала 1
               tx_buffer_adc[1] = val1 & 0xFF;         // младший байт канала 1
-              tx_buffer_adc[2] = (val2 >> 8) & 0xFF;  // тарший байт канала 2
+              tx_buffer_adc[2] = (val2 >> 8) & 0xFF;  // старший байт канала 2
               tx_buffer_adc[3] = val2 & 0xFF;         // младший байт канала 2
 
               uint32_t current_gain_setting = hopamp2.Init.PgaGain;
@@ -331,7 +331,7 @@ int main(void)
               }
 
 
-              // Отправл�?ем, е�?ли UART �?вободен
+              // Отправляем, если UART свободен
               if (uart_tx_complete) {
                  uart_tx_complete = 0;
                  HAL_UART_Transmit_IT(&huart1, tx_buffer_adc, 7);
@@ -396,7 +396,7 @@ int main(void)
 		  	        			         if (HAL_OPAMP_Init(&hopamp2) != HAL_OK) {
 		  	        			             Error_Handler();
 		  	        			         }
-		  	        			  		 HAL_OPAMP_Start(&hopamp1);                   // Запу�?каем OPAMP
+		  	        			  		 HAL_OPAMP_Start(&hopamp1);                   // Запускаем OPAMP
 		  	        			  		 HAL_OPAMP_Start(&hopamp2);		  	            break;
 
 		  	        default:
@@ -495,7 +495,7 @@ void SystemClock_Config(void)
 void CalculateSawtoothBuffer(void)
 {
     for (int i = 0; i < DAC_BUFFER_SIZE; i++) {
-        // Линейное нара�?тание от 0 до SawAmpDac
+        // Линейное нарастание от 0 до SawAmpDac
         uint32_t value = (i * SawAmpDac) / (DAC_BUFFER_SIZE - 1);
         value += OffsetDac;
 
@@ -510,7 +510,7 @@ void CalculateSawtoothBuffer(void)
 // Функция обновления параметров пилы
 void UpdateSawtooth(float amplitude_volts, float offset_volts, float period_ms)
 {
-    // Конвертаци�? вольт в коды DAC (Vref = 3.3V)
+    // Конвертация вольт в коды DAC (Vref = 3.3V)
     SawAmpDac = (uint32_t)(amplitude_volts * 4095.0f / 3.3f);
     OffsetDac = (uint32_t)(offset_volts * 4095.0f / 3.3f);
     SawPeriodMs = (uint32_t)period_ms;
@@ -521,7 +521,7 @@ void UpdateSawtooth(float amplitude_volts, float offset_volts, float period_ms)
     // Частота DAC обновлении = DAC_BUFFER_SIZE / (period_ms / 1000)
     uint32_t dac_freq_hz = (DAC_BUFFER_SIZE * 1000) / SawPeriodMs;
 
-    // Настройка таймера (TIM7) для  нужной ча�?тоты
+    // Настройка таймера (TIM7) для  нужной частоты
     // При APB1 = 100 МГц
     uint32_t timer_clock = 100000000;  // 100 МГц
     uint32_t prescaler = 0;
