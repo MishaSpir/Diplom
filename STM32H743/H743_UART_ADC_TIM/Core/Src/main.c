@@ -293,7 +293,7 @@ int main(void)
 
 		  if (adc_ready){
 			  adc_ready = false;
-              // Копируем данные �? защитой от прерываний
+              // Копируем данные  с выключенными прерываниями
               __disable_irq();
               uint16_t val1 = adc_value[0];
               uint16_t val2 = adc_value[1];
@@ -507,7 +507,7 @@ void CalculateSawtoothBuffer(void)
     }
 }
 
-// Функци�? обновлени�? параметров пилы
+// Функция обновления параметров пилы
 void UpdateSawtooth(float amplitude_volts, float offset_volts, float period_ms)
 {
     // Конвертаци�? вольт в коды DAC (Vref = 3.3V)
@@ -517,11 +517,11 @@ void UpdateSawtooth(float amplitude_volts, float offset_volts, float period_ms)
 
 
 
-    // Пере�?читать ча�?тоту таймера
-    // Ча�?тота DAC обновлени�? = DAC_BUFFER_SIZE / (period_ms / 1000)
+    // Пересчитать частоту таймера
+    // Частота DAC обновлении = DAC_BUFFER_SIZE / (period_ms / 1000)
     uint32_t dac_freq_hz = (DAC_BUFFER_SIZE * 1000) / SawPeriodMs;
 
-    // �?а�?тройка таймера (TIM7) дл�? нужной ча�?тоты
+    // Настройка таймера (TIM7) для  нужной ча�?тоты
     // При APB1 = 100 МГц
     uint32_t timer_clock = 100000000;  // 100 МГц
     uint32_t prescaler = 0;
@@ -530,12 +530,12 @@ void UpdateSawtooth(float amplitude_volts, float offset_volts, float period_ms)
     // Подбор делителей
     uint32_t total_divider = timer_clock / dac_freq_hz;
 
-    // Е�?ли делитель небольшой, то prescaler = 0
+    // Если делитель небольшой, то prescaler = 0
     if (total_divider <= 65536) {
         prescaler = 0;
         period = total_divider - 1;
     }
-    // Е�?ли делитель больше 65536, нужно и�?пользовать prescaler
+    // Если делитель больше 65536, нужно использовать prescaler
     else {
         // Ищем prescaler такой, чтобы period не превышал 65535
         prescaler = total_divider / 65536;
@@ -544,7 +544,7 @@ void UpdateSawtooth(float amplitude_volts, float offset_volts, float period_ms)
     __HAL_TIM_SET_PRESCALER(&htim7, prescaler);
     __HAL_TIM_SET_AUTORELOAD(&htim7, period);
 
-    // Пере�?читать буфер
+    // Пересчитать буфер
     CalculateSawtoothBuffer();
 }
 /* USER CODE END 4 */
