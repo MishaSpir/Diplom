@@ -64,7 +64,7 @@
             }
           }
         ],
-        "currentTab": 2
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -226,15 +226,15 @@
       "bases:Создать новую базу": false
     }
   },
-  "active": "188d443ebf114805",
+  "active": "2048f42c99d1ea92",
   "lastOpenFiles": [
+    "радар/Что делал.md",
     "Pasted image 20260608184424.png",
     "HAL.md",
     "UART на linux Mint 21.md",
     "Инфа.md",
     "Шпаргалка по функциям HAL.md",
     "ОБЩАЯ ТЕОРИЯ.md",
-    "радар/Что делал.md",
     "Pasted image 20260606175425.png",
     "Pasted image 20260606152712.png",
     "Pasted image 20260605204703.png",
@@ -256,7 +256,6 @@
     "Images/Pasted image 20260530175109.png",
     "Images/Pasted image 20260530174719.png",
     "videos/2026-05-12_16-40-23.mp4",
-    "Images/Pasted image 20260530144206.png",
     "радар/Плата.md",
     "радар/Теория.md",
     "Diplom_test1.mp4",

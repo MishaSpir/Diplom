@@ -1,59 +1,320 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget  
-from PyQt5 import uic, QtCore
+from PyQt5.QtWidgets import QApplication
+from PyQt5 import uic
 from PyQt5.QtSerialPort import QSerialPort, QSerialPortInfo  
-from PyQt5.QtCore import QIODevice
-from pyqtgraph import PlotWidget
+from PyQt5.QtCore import QIODevice, QTimer
 import pyqtgraph as pg
-
 import numpy as np
 from scipy import signal
-import matplotlib.pyplot as plt
+import time
+from scipy.fft import fft, fftfreq
 
-update_counter = 0
-GRAPH_UPDATE_INTERVAL = 100  # Обновлять график каждые 100 значений
-GRAPH_LENGTH_POINTS = 200
-buffer = ""  # Глобальный буфер для неполных строк
-flag  = True  
+# Константы
+GRAPH_LENGTH_POINTS = 1000 # кол-во точек 
+UPDATE_INTERVAL_MS = 100  # интервал обновления графика 
+MAX_PENDING = 100
+AGC_INTERVAL = 1000
+kexp = 0.01
+avrg = 25
+g = 4
+thresh = 0.005
 
-listX = []
-for x in range(GRAPH_LENGTH_POINTS):
-    listX.append(x)
-listY = []
-for y in range(GRAPH_LENGTH_POINTS):
-    listY.append(0)    
+# Параметры фильтра
+CUTOFF_FREQ = 400   # частота среза 
+SAMPLING_RATE = 10000 # частота дискретизации
 
-listX2 = []
-for x2 in range(GRAPH_LENGTH_POINTS):
-    listX2.append(x2)
-listY2 = []
-for y2 in range(GRAPH_LENGTH_POINTS):
-    listY2.append(y2)
-       
+buffer = bytearray()
+# listX = np.arange(GRAPH_LENGTH_POINTS, dtype=np.int32)  # int для X (индексы)
+listX = np.linspace(0.0, (GRAPH_LENGTH_POINTS*0.1) - 0.1, GRAPH_LENGTH_POINTS, dtype=np.float32)
+listY_raw = np.zeros(GRAPH_LENGTH_POINTS, dtype=np.int32)  # int для АЦП
+listY_filtered = np.zeros(GRAPH_LENGTH_POINTS, dtype=np.float64)  # float ТОЛЬКО для фильтра
+listY2_filtered = np.zeros(GRAPH_LENGTH_POINTS, dtype=np.float64)  # float ТОЛЬКО для фильтра
+listY2 = np.zeros(GRAPH_LENGTH_POINTS, dtype=np.int32)  # int для второго канала
+
+listY_filtered_for_test = []
+
+
+pending_data_raw = []  # Храним как int
+pending_data2 = []     # Храним как int
+
+graph_timer = None
+distance_timer = None
+agc_timer = None
+uart_timer = None
+DISTANCE_UPDATE_INTERVAL = 500
+
+OnPlot1_flag = False
+OnPlot2_flag = False
+OnPlot1Filter_flag = False
+OnPlot2Filter_flag = False
+distance_channel = True
+Inverse1Flag = False
+VariousCutOffFlag = False
+AGCFlag = False
+
+
+radar_module_state = 0
+opamp_value = 0      # текущий коэффициент OPAMP
+pin_state = 0        # состояние пина E15 (0 или 1)
+last_opamp_sent = 16 # последнее отправленное значение OPAMP
+
+
+def init_lowpass_filter(cutoff_freq, sampling_rate, order=2):
+    """Инициализация LOWPASS фильтра Баттерворта"""
+    nyquist = sampling_rate / 2
+    normalized_cutoff = cutoff_freq / nyquist
+    
+    if normalized_cutoff >= 1.0:
+        print(f"Предупреждение: частота среза {cutoff_freq} Гц слишком высока")
+        print(f"Устанавливаю {nyquist * 0.9} Гц")
+        normalized_cutoff = 0.9
+    
+    b, a = signal.butter(order, normalized_cutoff, btype='low')
+    zi = signal.lfilter_zi(b, a) * 0
+    
+    return b, a, zi
+
+# Инициализируем фильтр
+b, a, filter_state = init_lowpass_filter(CUTOFF_FREQ, SAMPLING_RATE, order=4)
+
+def apply_lowpass_filter(data_point):
+    """Применяет LOWPASS фильтр к одному значению (int -> float)"""
+    global filter_state, b, a
+    # Фильтр работает с float, поэтому преобразуем
+    filtered, filter_state = signal.lfilter(b, a, [float(data_point)], zi=filter_state)
+    return filtered[0]
+
+def setup_log_widget():
+        """Настройка виджета логов"""
+        # Настройка как окна логов
+        ui.plainTextEdit.setReadOnly(True)  # Только для чтения
+        ui.plainTextEdit.setMaximumBlockCount(1000)  # Ограничиваем количество строк (опционально)
+        ui.plainTextEdit.setLineWrapMode(ui.plainTextEdit.NoWrap)  # Не переносить строки
+
+        # Стилизация (опционально)
+        ui.plainTextEdit.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 10pt;
+            }
+        """)
+
+        # Очищаем при запуске
+        ui.plainTextEdit.clear()
+
+def log(msg):
+    """Простое логирование"""
+    from PyQt5.QtCore import QDateTime
+    
+    timestamp = QDateTime.currentDateTime().toString("hh:mm:ss")
+    ui.plainTextEdit.appendPlainText(f"[{timestamp}] {msg}")  # appendPlainText вместо append
+    ui.plainTextEdit.ensureCursorVisible()
 
 if __name__ == '__main__':
-    # Объект приложения
     app = QApplication(sys.argv)
-    # интерфейс 
-    # ui = uic.loadUi("design.ui")
-    ui = uic.loadUi("design_2_graph.ui")
+    ui = uic.loadUi("design_main2_tabs.ui")
     ui.setWindowTitle("Serial GUI")
     
-    # Объект порта
+    # Настройка порта
     serial = QSerialPort()
-    serial.setBaudRate(115200)
-    portList = []
-    ports = QSerialPortInfo().availablePorts()
-    for port in ports:
-        portList.append(port.portName())
-    print(portList)
-
-    # добавляем в ГУЙ в ComList список портов
+    serial.setBaudRate(1000000)
+    
+    portList = [port.portName() for port in QSerialPortInfo().availablePorts()]
     ui.ComList.addItems(portList)
-    def test():
-        print("test")
+    
+    # НАСТРОЙКА НИЖНЕГО ГРАФИКА (graph2) - оба сигнала
+    ui.graph2.setBackground("w")
+    ui.graph2.showGrid(x=True, y=True)
+    ui.graph2.setLabel('left', 'Сигналы')
+    ui.graph2.setLabel('bottom', 'ms')
+    ui.graph2.setTitle('')
+    
+    # Линия для ФИЛЬТРОВАННОГО сигнала (синяя) - float значения
+    pen_filtered = pg.mkPen(color=(0, 0, 255), width=5)
+    curve_filtered = ui.graph2.plot(listX, listY_filtered, pen=pen_filtered)
+    
+    # Линия для СЫРОГО сигнала (красная) - int значения
+    pen_raw = pg.mkPen(color=(255, 0, 0), width=0.5)
+    curve_raw = ui.graph2.plot(listX, listY_raw, pen=pen_raw)
+    
+    # НАСТРОЙКА ВЕРХНЕГО ГРАФИКА (graph) - второй канал
+    ui.graph.setBackground("w")
+    pen2 = pg.mkPen(color=(0, 255, 0), width=2)
+    ui.graph.showGrid(x=True, y=True)
+    ui.graph.setLabel('left', 'Канал 2')
+    ui.graph.setLabel('bottom', 'ms')
+    ui.graph.setTitle('')
+    curve2 = ui.graph.plot(listX, listY2, pen=pen2)
+    curve2_filtered = ui.graph.plot(listX, listY2_filtered, pen=pen_filtered)
 
+     # НАСТРОЙКА  ГРАФИКА 3 (test) 
+    pen3 = pg.mkPen(color=(255, 0, 0), width=2)
+    ui.graphTest.setBackground("w")
+    ui.graphTest.showGrid(x=True, y=True)
+    ui.graphTest.setLabel('left', 'Канал 2')
+    ui.graphTest.setLabel('bottom', 'ms')
+    ui.graphTest.setTitle('тестовые данные')
+    curve3_raw = ui.graphTest.plot(listX, listY_filtered_for_test, pen=pen_raw)
+    curve3_filtered = ui.graphTest.plot(listX, listY_filtered_for_test, pen=pen3)
+
+    # НАСТРОЙКА  ГРАФИКА 4 (test) - второй канал
+    pen4 = pg.mkPen(color=(0, 0, 0), width=2)
+    ui.widget.setBackground("w")
+    ui.widget.showGrid(x=True, y=True)
+    ui.widget.setLabel('left', 'Канал 2')
+    ui.widget.setLabel('bottom', 'ms')
+    ui.widget.setTitle('цифровой компаратор')
+    curve4 = ui.widget.plot(listX, listY_filtered_for_test, pen=pen4, 
+    # symbol="+",
+    # symbolSize=20,
+    # symbolBrush="b"
+    )
+
+
+    setup_log_widget()
+    # Для отладки
+    update_count = 0
+    last_time = time.time()
+
+    log("Программа запущена")
+
+
+
+    
+    def updateGraph():
+        """Обновление графиков"""
+        global pending_data_raw, pending_data2, listY_raw, listY_filtered,listY2_filtered, listY2
+        global update_count, last_time, filter_state
+        
+        has_data = False
+        
+        # Обработка данных для первого канала (с фильтром)
+        if pending_data_raw:
+            n_new = len(pending_data_raw)
+            
+            # Применяем фильтр к каждому новому значению
+            filtered_values = []
+            for value in pending_data_raw:
+                filtered_val = apply_lowpass_filter(value)  # value уже int
+                filtered_values.append(filtered_val)
+            
+            # Обновляем массив сырых данных (int)
+            if n_new >= GRAPH_LENGTH_POINTS:
+                listY_raw = np.array(pending_data_raw[-GRAPH_LENGTH_POINTS:], dtype=np.int32)
+                listY_filtered = np.array(filtered_values[-GRAPH_LENGTH_POINTS:], dtype=np.float64)
+            else:
+                listY_raw = np.roll(listY_raw, -n_new)
+                listY_raw[-n_new:] = pending_data_raw
+                listY_filtered = np.roll(listY_filtered, -n_new)
+                listY_filtered[-n_new:] = filtered_values
+            
+            pending_data_raw = []
+            has_data = True
+     
+        # Обработка второго канала
+        if pending_data2:
+            n_new = len(pending_data2)
+
+             # Применяем фильтр к каждому новому значению
+            filtered_values = []
+            for value in pending_data2:
+                filtered_val = apply_lowpass_filter(value)  # value уже int
+                filtered_values.append(filtered_val)
+            
+            if n_new >= GRAPH_LENGTH_POINTS:
+                listY2 = np.array(pending_data2[-GRAPH_LENGTH_POINTS:], dtype=np.int32)                
+                listY2_filtered = np.array(filtered_values[-GRAPH_LENGTH_POINTS:], dtype=np.float64)
+                mean_value = np.mean(listY2_filtered)
+                if(Inverse1Flag):
+                    listY2_filtered = 2 * mean_value - listY2_filtered
+            else:
+                listY2 = np.roll(listY2, -n_new)
+                listY2[-n_new:] = pending_data2
+                listY2_filtered = np.roll(listY2_filtered, -n_new)
+                listY2_filtered[-n_new:] = filtered_values
+            
+            pending_data2 = []
+            has_data = True
+        
+        # Обновляем отображение
+        if has_data:
+            if(OnPlot2_flag):
+                curve_raw.setData(listX, listY_raw)
+            else:
+                curve_raw.setData([], [])
+            if(OnPlot2Filter_flag):
+                curve_filtered.setData(listX, listY_filtered)    
+            else:
+                curve_filtered.setData([], [])
+            
+            if(OnPlot1_flag):
+                curve2.setData(listX, listY2)
+            else:
+                curve2.setData([],[])
+            if(OnPlot1Filter_flag):
+                curve2_filtered.setData(listX, listY2_filtered)    
+            else:
+                curve2_filtered.setData([], [])    
+            
+            update_count += 1
+            if time.time() - last_time >= 1.0:
+                # print(f"Обновлений/сек: {update_count}, точек в буфере: {len(pending_data_raw)}")
+                update_count = 0
+                last_time = time.time()
+    
+    def OnRead():
+        global buffer, pending_data_raw, pending_data2, opamp_value, pin_state,radar_module_state,g
+
+        while serial.bytesAvailable():
+            data = serial.readAll()
+            buffer.extend(data)
+
+            i = 0
+            while i < len(buffer):
+                # Новый формат: 4 байта ADC + 1 байт OPAMP + 1 байт PIN + 0x0A = 7 байт
+                # Ищем 0x0A на позиции 6 (седьмой байт)
+                if i + 6 < len(buffer) and buffer[i+6] == 0x0A:
+                    # Извлекаем 4 байта ADC значений
+                    adc_packet = buffer[i:i+4]
+
+                    # Извлекаем OPAMP значение (байт на позиции 4)
+                    opamp_byte = buffer[i+4]
+
+                    # Извлекаем PIN_STATE (байт на позиции 5)
+                    pin_state_byte = buffer[i+5]
+
+                    # Удаляем весь пакет из буфера (7 байт)
+                    buffer = buffer[i+7:]  # 4 ADC + 1 OPAMP + 1 PIN + 0x0A = 7
+
+                    if len(adc_packet) >= 4:
+                        # Читаем ADC значения (big-endian)
+                        adc_1 = (adc_packet[0] << 8) | adc_packet[1]
+                        adc_2 = (adc_packet[2] << 8) | adc_packet[3]
+
+                        # Сохраняем ADC данные
+                        pending_data_raw.append(adc_1)
+                        pending_data2.append(adc_2)
+
+                        # Сохраняем OPAMP значение
+                        opamp_value = opamp_byte
+                        pin_state = pin_state_byte
+
+                    i = 0  # Начинаем поиск сначала
+                else:
+                    i += 1
+
+            # Защита от переполнения буфера
+            if len(buffer) > 5000:
+                buffer = buffer[-5000:]
+    
     def OnOpen():
+        global graph_timer,distance_timer, filter_state, opamp_value, last_opamp_sent,agc_timer,uart_timer
+
+        opamp_value = 0
+        last_opamp_sent = 16  # начальное значение усиления
+        
         gui_port_name = ui.ComList.currentText()
         if not gui_port_name:
             print("No COMs are available")
@@ -61,267 +322,466 @@ if __name__ == '__main__':
         
         serial.setPortName(gui_port_name)
         if serial.open(QIODevice.ReadWrite):
-            print("OnOpen",ui.ComList.currentText())
-        else: 
-            print("Can`t open the port")    
+            print(f"Opened {gui_port_name}")
+            print(f"Фильтр LOWPASS: частота среза = {CUTOFF_FREQ} Гц")
+            print(f"Частота дискретизации = {SAMPLING_RATE} Гц")
+            print(f"Тип данных АЦП: 16-битные целые числа (0-65535)")
+            
+            # Сбрасываем состояние фильтра при открытии
+            _, _, filter_state = init_lowpass_filter(CUTOFF_FREQ, SAMPLING_RATE, order=4)
+            
+            if graph_timer is None:
+                graph_timer = QTimer()
+                graph_timer.timeout.connect(updateGraph)
+                graph_timer.start(UPDATE_INTERVAL_MS)
+                print(f"Таймер 1 запущен, интервал {UPDATE_INTERVAL_MS} мс")
 
-    def OnClose():
-        serial.close()
-        print("OnClose",ui.ComList.currentText())   
+            if distance_timer is None:
+                distance_timer = QTimer()
+                distance_timer.timeout.connect(findDistance)
+                distance_timer.start(DISTANCE_UPDATE_INTERVAL)
+                print(f"Таймер 2 запущен, интервал {DISTANCE_UPDATE_INTERVAL} мс")   
 
+            if agc_timer is None:
+                agc_timer = QTimer()
+                agc_timer.timeout.connect(agc_update)
+                agc_timer.start(AGC_INTERVAL)  # каждые 2 секунды
+                print(f"Таймер AGC запущен, интервал {AGC_INTERVAL} мс")
 
-  
-
-    def apply_lowpass_filter(data, cutoff_freq, sampling_rate, filter_type='butter', order=2):
-        """
-        Применяет Low-Pass фильтр к данным.
-
-        Параметры:
-        - data: входной сигнал (массив NumPy или список)
-        - cutoff_freq: частота среза фильтра (в Гц)
-        - sampling_rate: частота дискретизации сигнала (в Гц)
-        - filter_type: тип фильтра ('butter' для Баттерворта, 'cheby' для Чебышёва)
-        - order: порядок фильтра (рекомендуется 2-16, как в WaveForms)
-
-        Возвращает:
-        - отфильтрованный сигнал (массив NumPy)
-        """
-        # Нормализуем частоту среза (частота Найквиста = sampling_rate / 2)
-        nyquist_freq = 0.5 * sampling_rate
-        normalized_cutoff = cutoff_freq / nyquist_freq
-
-        # Проектируем фильтр
-        if filter_type == 'butter':
-            b, a = signal.butter(order, normalized_cutoff, btype='low')
-        elif filter_type == 'cheby':
-            # Для Чебышёва нужно указать допустимую неравномерность (rp) в дБ
-            rp = 0.5  # Неравномерность в полосе пропускания, 0.5 дБ - хорошее значение по умолчанию
-            b, a = signal.cheby1(order, rp, normalized_cutoff, btype='low')
+            if uart_timer is None:
+                uart_timer = QTimer()
+                uart_timer.timeout.connect(uart_update)
+                uart_timer.start(100)  # каждые 0.1 секунды
+                print(f"Таймер uart_timer запущен, интервал {25} мс")              
         else:
-            raise ValueError("filter_type должен быть 'butter' или 'cheby'")
-
-        # Применяем фильтр с двусторонней фильтрацией (нулевая задержка фазы)
-        # Это ключевой момент: filtfilt обрабатывает сигнал дважды (вперёд и назад),
-        # что устраняет сдвиг фазы, как и в программных фильтрах WaveForms [citation:5].
-        filtered_signal = signal.filtfilt(b, a, data)
-
-        return filtered_signal
+            print("Can't open the port")
     
-    def median_filter_3point(data):
-        """
-        Медианный фильтр с окном из 3 точек
-        (аналог MATLAB кода с buf(1,1:3)=0)
+    def OnClose():
+        global graph_timer,distance_timer
+        
+        if graph_timer:
+            graph_timer.stop()
+            graph_timer = None
 
-        Параметры:
-        - data: входной сигнал (ADC_sin)
+        if distance_timer:
+            distance_timer.stop()
+            distance_timer = None    
+        serial.close()
+        print("Port closed")
 
-        Возвращает:
-        - middle: отфильтрованный медианным фильтром сигнал
-        """
-        data = np.asarray(data)
-        N = len(data)
+    def OnPlot2():
+        global OnPlot2_flag
+        OnPlot2_flag = not OnPlot2_flag
 
-        # Инициализация буфера и результата
-        buf = np.zeros(3)
-        middle = np.zeros(N)
-        count = 0  # в Python индексация с 0
+    def OnPlot1():
+        global OnPlot1_flag
+        OnPlot1_flag = not OnPlot1_flag    
 
-        # Медианный фильтр
-        for i in range(N):
-            # Записываем в буфер (циклический)
-            buf[count] = data[i]
-            count += 1
+    def OnPlot2Filter():
+        global OnPlot2Filter_flag
+        OnPlot2Filter_flag = not OnPlot2Filter_flag  
 
-            if count > 2:  # если больше 2 (так как индексы 0,1,2)
-                count = 0
+    def OnPlot1Filter():
+        global OnPlot1Filter_flag
+        OnPlot1Filter_flag = not OnPlot1Filter_flag 
 
-            # Находим медиану из трех значений
-            a = buf[0]
-            b = buf[1]
-            c = buf[2]
+    def radarModuleToggle(val):
+        global radar_module_state
+        if val:
+            radar_module_state = 1
+        else:
+            radar_module_state = 0    
+        SerialSend(0x01,radar_module_state)
 
-            # Алгоритм поиска медианы
-            if (a <= b) and (a <= c):
-                if (b <= c):
-                    middle[i] = b
-                else:
-                    middle[i] = c
-            elif (b <= a) and (b <= c):
-                if (a <= c):
-                    middle[i] = a
-                else:
-                    middle[i] = c
+    def OpAmp_cnahge(val):
+        global last_opamp_sent, last_opamp_slider_val,g
+        g = val
+        last_opamp_slider_val  = val
+        val = pow(2,val)
+        if val > 16:
+            val = 16
+        last_opamp_sent = val
+        SerialSend(0x02,val)
+    
+
+        
+    def SerialSend(key, data):  # key: 0x01 - radar, 0x02 - OpAmp, data: значение
+        tx_send_buf = bytearray()
+        tx_send_buf.append(0x24)           # Преамбула
+        tx_send_buf.append(key & 0xFF)     # Ключ (0x01 или 0x02)
+        tx_send_buf.append(data & 0xFF)    # Данные
+        tx_send_buf.append(0x0A)           # Терминатор \n
+        serial.write(tx_send_buf)
+        print(f"Отправлено: {tx_send_buf.hex().upper()} (key={key}, data={data})")
+
+    def UpdateIntervalChange(val):
+        global UPDATE_INTERVAL_MS,graph_timer
+        UPDATE_INTERVAL_MS = val * 100
+        if graph_timer is not None:
+                graph_timer.stop()           # Останавливаем
+                graph_timer.start(UPDATE_INTERVAL_MS)  # Запускаем с новым интервалом
+    
+    def UpdatePortList():
+        global portList
+        portList = []
+        ui.ComList.clear()
+        portList = [port.portName() for port in QSerialPortInfo().availablePorts()]    
+        ui.ComList.addItems(portList)
+
+    def changeChannel():
+        global distance_channel
+        distance_channel = not distance_channel
+
+    def Inverse1():
+        global Inverse1Flag 
+        Inverse1Flag = not Inverse1Flag
+
+    def VariousCutOff():
+        global VariousCutOffFlag,b,a,filter_state 
+        VariousCutOffFlag = not VariousCutOffFlag
+        if(VariousCutOffFlag == False):
+            b, a, filter_state = init_lowpass_filter(600, SAMPLING_RATE, order=4)
+
+    def AGC():
+        global AGCFlag, g,opamp_value
+        AGCFlag = not AGCFlag
+        OpAmp_cnahge(g)   
+        # if(AGCFlag == False):
+        #     g = opamp_value
+        #     OpAmp_cnahge(g)    
+
+    def uart_update():
+        global opamp_value,last_opamp_sent,radar_module_state,pin_state
+        if(opamp_value != last_opamp_sent):
+            SerialSend(0x02,last_opamp_sent)
+        if(pin_state != radar_module_state):
+            SerialSend(0x01,radar_module_state)  
+        # log(f"radar_module_state: {radar_module_state}")
+        # log(f"pin_state: {pin_state}")  
+
+
+    def agc_update():
+        if(radar_module_state):
+            global listY_filtered_for_test, kexp,avrg,opamp_value,g,b,a,filter_state,thresh
+
+            if(distance_channel):
+                listY_filtered_for_test = listY_filtered
+                ui.chan_label.setText("Channel 2")
+
             else:
-                if (a <= b):
-                    middle[i] = a
+                listY_filtered_for_test = listY2_filtered
+                ui.chan_label.setText("Channel 1")
+
+
+            cleaned_signal = np.array(listY_filtered_for_test, dtype=np.float64)
+            mean_val = np.mean(cleaned_signal)
+
+
+       #     Первая фильтрация (для получения порога)
+            listY_fil = exponential_filter(listY_filtered_for_test, kexp)
+
+
+
+            deviation = listY_filtered_for_test - listY_fil
+            rms_amplitude = np.sqrt(np.mean(deviation**2))
+            mean_abs_amplitude = np.mean(np.abs(deviation))
+
+            print(f"RMS амплитуда: {rms_amplitude:.2f}")
+            print(f"Средняя абсолютная амплитуда: {mean_abs_amplitude:.2f}")
+
+            if(AGCFlag):
+                if(rms_amplitude<220):
+                    g = g+1
+                    OpAmp_cnahge(g)
+                elif(rms_amplitude>400):
+                    g = g-1
+                    OpAmp_cnahge(g)
+                if(g>4): 
+                        g = 4
+                if(g<1): 
+                        g = 1            
+                print(f"G от амплитуды:{g}")
+                log(f"G от амплитуды:{g}")
+
+            if(g == 1):
+                kexp = 0.001
+                thresh = 0.5
+
+            elif(g == 2):
+                kexp = 0.014
+                thresh = 0.025
+
+            elif(g == 3):
+                kexp = 0.019
+                thresh = 0.015
+
+            else:    
+                kexp = 0.0275
+                thresh = 0.005
+
+
+            ui.gainLabel_2.setText("desired gain = " + str(pow(2,g)))
+            ui.gainLabel.setText("current gain = " + str(opamp_value))
+
+    def findDistance():
+        if(radar_module_state):
+            global listY_filtered_for_test, kexp,avrg,opamp_value,g,b,a,filter_state,thresh
+
+            if(distance_channel):
+                listY_filtered_for_test = listY_filtered
+                ui.chan_label.setText("Channel 2")
+
+            else:
+                listY_filtered_for_test = listY2_filtered
+                ui.chan_label.setText("Channel 1")
+
+            cleaned_signal = np.array(listY_filtered_for_test, dtype=np.float64)
+
+            # Вторая фильтрация (очищенного сигнала)
+            listY_fil2 = exponential_filter(listY_filtered_for_test, kexp)
+
+            # # Заменяем пики (где исходный сигнал сильно отличается от фильтрованного)
+            # for i in range(len(listY_filtered_for_test)):
+            #     # Если отношение отличается более чем на 5%
+            #     if i < len(listY_fil2):
+            #         ratio = listY_filtered_for_test[i] / (listY_fil2[i] + 1e-10)  # +1e-10 чтобы избежать деления на 0
+            #         if ratio > 1+thresh:  # отличается более чем на 5%
+            #             cleaned_signal[i] = listY_fil2[i]  # Заменяем на фильтрованное значение
+
+            # Отображаем
+            curve3_raw.setData(listX[:len(cleaned_signal)], cleaned_signal)
+            curve3_filtered.setData(listX[:len(listY_fil2)], listY_fil2)         
+           
+            shift = 10
+            listY_fil_shifted = listY_fil2[shift:]  # Удаляем первые 10 элементов
+
+            # Если нужно сохранить длину массива, добавляем нули в конец
+            listY_fil_shifted = np.append(listY_fil2[shift:], np.zeros(shift))
+            curve3_filtered.setData(listX[:len(listY_fil_shifted)-shift],listY_fil_shifted[:len(listY_fil_shifted)-shift])
+
+
+            comp, F1, F2 = frequency_detection(listY_filtered_for_test, listY_fil_shifted)
+            F1,F2  = frequency_detection_simple(listY_filtered_for_test,listY_fil_shifted) # Чатота в герцах
+            if(VariousCutOffFlag):
+                if(F1 <= 100):
+                    b, a, filter_state = init_lowpass_filter(200, SAMPLING_RATE, order=4)
+                elif(F1 > 100 and F1 <= 150):
+                    b, a, filter_state = init_lowpass_filter(300, SAMPLING_RATE, order=4)
+                elif(F1 > 150 and F1 <= 200):
+                    b, a, filter_state = init_lowpass_filter(400, SAMPLING_RATE, order=4)    
+                elif(F1 > 200 and F1 <= 250):
+                    b, a, filter_state = init_lowpass_filter(500, SAMPLING_RATE, order=4)    
                 else:
-                    middle[i] = b
+                    b, a, filter_state = init_lowpass_filter(500, SAMPLING_RATE, order=4)
+            curve4.setData(listX, comp)
+            R = ((F1 * 299792458 * 50e-3) / (2*8.5e8)) # Дистанция в метрах
+            # Девиация примерно 83,8 МГц
+            # Период = 50 мс
+            # скорость света 299792458
+            ui.lcdF1.display(f"{R:.2f}")
+            print(f"F1 = {F1}")
+            print(f"R = {R}")
+ 
+            fs = 10000  # частота дискретизации
+            # freq_fft, freqs, mags = frequency_detection_fft(listY_fil, fs)
+            f,m = frequency_detection_fft_peaks(listY_filtered_for_test,fs,3)
+      
 
-        return middle
+            peak = get_signal_strength(listY_filtered)
+            print(f"rms: {peak}")
 
-    def running_average_filter(data, k=0.1):
-        """
-        Экспоненциальный бегущий средний фильтр (running average)
-        (аналог MATLAB кода raf_sin)
+            # log(listY_fil2)
 
-        Параметры:
-        - data: входной сигнал (middle)
-        - k: коэффициент сглаживания (0 < k < 1)
 
-        Возвращает:
-        - raf_sin: отфильтрованный сигнал
-        """
-        data = np.asarray(data)
-        N = len(data)
+    def get_signal_strength(signal):
+        """Оценка силы сигнала по максимальной амплитуде"""
+        signal = np.asarray(signal)
+        max_amplitude = np.max(np.abs(signal))
+        return max_amplitude
+    
+    def get_peak_factor(signal):
+        """Пик-фактор = max_amplitude / rms (показывает характер сигнала)"""
+        max_amp = np.max(np.abs(signal))
+        rms = np.sqrt(np.mean(signal**2))
+        if rms < 0.1:
+            return 1
+        return max_amp / rms      
 
-        # Инициализация
-        raf_sin = np.zeros(N)
+    def exponential_filter(signal, k=0.08):
+       
+        signal = np.asarray(signal)
+        n = len(signal)
+        filVal = np.zeros(n, dtype=np.float64)
 
-        # Первое значение
-        raf_sin[0] = (data[0] - raf_sin[0]) * k
+        # Первое значение равно первому отсчёту сигнала
+        filVal[0] = signal[0]
 
         # Основной цикл
-        for i in range(1, N):
-            raf_sin[i] = raf_sin[i-1] + (data[i] - raf_sin[i-1]) * k
+        for i in range(1, n):
+            filVal[i] = signal[i] * k + filVal[i-1] * (1 - k)
 
-        return raf_sin
+        return filVal
+
+    def moving_average_filter(signal, window_size=150):
+        signal = np.asarray(signal)
+        n = len(signal)
+        aaf_sig = np.zeros(n, dtype=np.float64)
+
+        for i in range(window_size, n):
+            # Суммируем window_size предыдущих значений
+            for j in range(window_size):
+                aaf_sig[i] += signal[i - j]
+
+            # Делим на размер окна
+            aaf_sig[i] /= window_size
+
+            # Дублируем значение в начало окна (как в MATLAB)
+            aaf_sig[i - window_size + 1] = aaf_sig[i]
+
+        return aaf_sig        
     
+    def get_rms_strength(signal):
+        """Оценка силы сигнала по RMS"""
+        signal = np.asarray(signal)
+        rms = np.sqrt(np.mean(signal**2))
+        return rms
 
-    def RefreshGraph2():
-        global flag,listY2,listY
-        listY2 = listY
-        aaf = []
-        aaf1 = []
-        # for i in range(GRAPH_LENGTH_POINTS):
-        #     aaf.append(0) 
-        # flag = True
-        flag = True
-        
-        # N = len(listY2)  
-        NUM_READ = 3
-        # aaf = [0] * N
+    def frequency_detection(signal, filtered_signal, threshold=None, time_span=0.05):
+        signal = np.asarray(signal)
 
-        # ЦИКЛ ФИЛЬТРА 
-        # for i in range(NUM_READ, N):  # от NUM_READ до N-1
-        #     for j in range(NUM_READ):  # от 0 до 49
-        #         aaf[i] = aaf[i] + listY2[i - j]
-        #     aaf[i] = aaf[i] / NUM_READ              
+        if threshold is None:
+            threshold = np.asarray(filtered_signal)
+        elif isinstance(threshold, (int, float)):
+            threshold = np.full_like(signal, threshold)
 
-        # aaf1 = median_filter_3point(listY2)
-        # aaf = running_average_filter(aaf1,0.5)
-        aaf = apply_lowpass_filter(listY2,200,1000,'butter',4)
+        n = len(signal)
+        comp = np.zeros(n, dtype=np.int8)
 
+        flag = 0
+        count = 0
+        count_one_period = 0
 
-        ui.graph2.clear()
-        ui.graph2.plot(listX[NUM_READ:GRAPH_LENGTH_POINTS-1],listY2[NUM_READ:GRAPH_LENGTH_POINTS-1],pen=pen2)      
-        ui.graph2.plot(listX[NUM_READ:GRAPH_LENGTH_POINTS-1],aaf[NUM_READ:GRAPH_LENGTH_POINTS-1],pen=pen)
+        for i in range(n):
+            if signal[i] > threshold[i]:
+                comp[i] = 1
+                if flag == 0:
+                    count += 1
+                    if i < 500:  # Первые 500 отсчётов
+                        count_one_period = count
+                        count_one_period = count_one_period - 1
+                flag = 1
+            else:
+                comp[i] = 0
+                flag = 0
 
+        # Расчёт частоты
+        # Предполагается, что time_span = длительность сигнала (в секундах)
+        # count_one_period - количество переходов за первый период (~50 мс)
+        # count - количество переходов за всю длительность (4*0.05 = 0.2 сек)
+
+        F_found = count_one_period / time_span if time_span > 0 else 0
+        F_found2 = count / (2 * time_span) if time_span > 0 else 0
+
+        return comp, F_found, count_one_period
     
-    def OnRead():
-        global buffer
-        global update_counter
+    def frequency_detection_simple(signal, threshold, fs=10000):
+        """
+        Простая версия определения частоты по пересечениям
 
-        while serial.bytesAvailable():
-            # Читаем ВСЕ доступные данные как байты
-            data = serial.readAll()
-            # Декодируем и добавляем в буфер
-            buffer += str(data, 'latin-1')
+        Возвращает частоту по количеству пересечений
+        """
 
-            # Разбиваем по '\n' и обрабатываем только полные строки
-            lines = buffer.split('\n')
+        cross_counts = 0
+        signal = np.asarray(signal)
+        threshold = np.asarray(threshold)
 
-            # Последний элемент - неполная строка (если нет '\n' в конце)
-            buffer = lines[-1]
+        # Находим пересечения
+        crossings = []
+        for i in range(len(signal) - 1):
+            if (signal[i] > threshold[i] and signal[i+1] <= threshold[i+1]) or \
+               (signal[i] < threshold[i] and signal[i+1] >= threshold[i+1]):
+                crossings.append(i)
+                cross_counts = cross_counts + 1
 
-            # Обрабатываем все полные строки
-            for line in lines[:-1]:
-                line = line.strip()
-                if line:  # Не пустая строка
-                    try:
-                        value = int(line)
-                        # value = value*2
-                        # Обновляем GUI
-                        ui.progressBar.setValue(value)
-                        ui.adcLbl.setText(str(value))
-                        print(value)  # Теперь будет правильно!
+        if len(crossings) < 3:
+            return 0
 
-                        # Обновляем график 
-                        global update_counter, listY, listY2,flag
-                        listY.append(value)
-                        listY.pop(0)
-                        update_counter += 1
-                        if update_counter >= GRAPH_UPDATE_INTERVAL:
-                            update_counter = 0
-                            listY = listY[1:]
-                            listY.append(value)
-                            # print(listY)
-                            ui.graph.clear()
-                            ui.graph.plot(listX,listY,pen=pen)
-                            if flag:
-                                flag = False
-                                
-                                
+        # Переводим в секунды
+        crossings_time = np.array(crossings) / fs
 
-                                
-                        
-                    except ValueError:
-                     print(f"Ошибка преобразования: {line}")
-        # # Читаем ВСЕ доступные данные, а не одну строку
-        # while serial.bytesAvailable():
-        #     rx = serial.readLine()
-        #     if rx:  # Если есть данные
-        #         try:
-        #             rxstr = str(rx, 'latin-1').strip()
-        #             if rxstr:  # Не обрабатываем пустые строки
-        #                 value = int(rxstr)
-        #                 ui.progressBar.setValue(value)
-        #                 ui.adcLbl.setText(rxstr)
+        # Берем только установившийся режим (пропускаем первые 20%)
+        start_idx = len(crossings_time) // 5
+        stable_crossings = crossings_time[start_idx:-1]
 
-        #                 # Обновляем график (но не каждые 10 мс!)
-        #                 # update_graph(value)
-        #                 print(value)
-        #                 # ui.adcLbl.setText(rxstr)
-        #                 global listY
-        #                 global listX
-        #                 # listY = listY[1:]
-        #                 # listY.append(value)
-        #                 # # print(listY)
-        #                 # ui.graph.clear()
-        #                 # ui.graph.plot(listX,listY,pen=pen)
-        #                 update_counter +=1
-        #                 if update_counter >= GRAPH_UPDATE_INTERVAL:
-        #                     update_counter = 0
-        #                     listY = listY[1:]
-        #                     listY.append(value)
-        #                     # print(listY)
-        #                     ui.graph.clear()
-        #                     ui.graph.plot(listX,listY,pen=pen)
-        #         except ValueError:
-        #             pass  # Игнорируем нечисловые данные    
-         
-            
+        if len(stable_crossings) < 2:
+            return 0
 
-    serial.readyRead.connect(OnRead) #когда пришли данные вызовится фунукция OnRead
-    ui.ComList.currentIndexChanged.connect(test)
+        # Расчёт частоты
+        total_time = stable_crossings[-1] - stable_crossings[0]
+        frequency = (len(stable_crossings) - 1) / (2 * total_time)
+
+        return frequency,cross_counts
+    
+    def frequency_detection_fft_peaks(signal, fs=10000, n_peaks=20):
+        """
+        Определение нескольких частот через БПФ (всегда возвращает n_peaks значений)
+
+        Возвращает:
+        - frequencies: массив частот пиков (всегда длины n_peaks)
+        - magnitudes: массив амплитуд пиков (всегда длины n_peaks)
+        """
+        signal = np.asarray(signal)
+        signal = signal - np.mean(signal)
+
+        n = len(signal)
+        yf = fft(signal)
+        frequencies = fftfreq(n, 1/fs)
+
+        # Берём положительные частоты
+        positive_idx = frequencies > 0
+        freqs = frequencies[positive_idx]
+        mags = np.abs(yf[positive_idx])
+
+        # Ищем пики
+        from scipy.signal import find_peaks
+        peaks, properties = find_peaks(mags, height=np.max(mags) * 0.1, distance=5)
+
+        # Инициализируем результаты нулями
+        result_freqs = np.zeros(n_peaks)
+        result_mags = np.zeros(n_peaks)
+
+        if len(peaks) > 0:
+            # Сортируем по амплитуде
+            peak_heights = properties['peak_heights']
+            sorted_idx = np.argsort(peak_heights)[::-1]
+
+            # Берём до n_peaks пиков
+            n_peaks_actual = min(n_peaks, len(sorted_idx))
+            result_freqs[:n_peaks_actual] = freqs[peaks[sorted_idx[:n_peaks_actual]]]
+            result_mags[:n_peaks_actual] = peak_heights[sorted_idx[:n_peaks_actual]]
+
+        return result_freqs, result_mags
+    # Подключение сигналов
+    serial.readyRead.connect(OnRead)
     ui.openBtn.clicked.connect(OnOpen)
     ui.closeBtn.clicked.connect(OnClose)
-    ui.rfrshBtn.clicked.connect(RefreshGraph2)
+    ui.updatePortList.clicked.connect(UpdatePortList)
+    ui.testBtn.clicked.connect(findDistance)
+    ui.radar_btn.clicked.connect(radarModuleToggle)
+    ui.changeChannel.clicked.connect(changeChannel)
+    ui.inverse1.clicked.connect(Inverse1)
+    ui.OpAmpSlider.valueChanged.connect(OpAmp_cnahge)
+    ui.graphUpdateSlider.valueChanged.connect(UpdateIntervalChange)
+    ui.VariousCutOff.clicked.connect(VariousCutOff)
+    ui.AGC.clicked.connect(AGC)
 
-    # plot_graph = pg.PlotWidget()
-    # ui.graph.setCentralWidget(plot_graph)
-    ui.graph.setBackground("w")
-    # pen = pg.mkPen(color=(255, 0, 0))
-    pen = pg.mkPen(color=(0, 0, 255), width=2, style=QtCore.Qt.DashLine)
-    pen2 = pg.mkPen(color=(255, 0, 0), width=1, style=QtCore.Qt.DashLine)
-    ui.graph.showGrid(x=True, y=True)
-    ui.graph.plot(listX,listY,pen=pen)
-
-    #Для второго графика 
-    ui.graph2.setBackground("w")
-    ui.graph2.showGrid(x=True, y=True)
-    ui.graph2.plot(listX2,listY2,pen=pen)
+    
 
 
-
+    ui.gaph2_on.clicked.connect(OnPlot2)
+    ui.gaph1_on.clicked.connect(OnPlot1)
+    ui.graph2_filter_on.clicked.connect(OnPlot2Filter) 
+    ui.graph1_filter_on.clicked.connect(OnPlot1Filter)
+    
     ui.show()
-    sys.exit(app.exec_()) 
+    sys.exit(app.exec_())
